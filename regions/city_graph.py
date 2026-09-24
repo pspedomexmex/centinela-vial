@@ -245,6 +245,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "culiacan":       "MEX-15",
         "nogales":        "MEX-15",
         "agua_prieta":    "MEX-2",
+        "mexicali":       "MEX-2",    # vía San Luis Río Colorado
     },
     "nogales": {
         "hermosillo":     "MEX-15",
@@ -261,6 +262,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "los_mochis": {
         "culiacan":       "MEX-15",
         "hermosillo":     "MEX-15",
+        "la_paz":         "MEX-1",    # transbordador Topolobampo-La Paz
     },
     "mazatlan": {
         "culiacan":       "MEX-15",
@@ -639,11 +641,11 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "cuauhtemoc":      {"chihuahua": 100, "nuevo_casas_grandes": 180},
     "nuevo_casas_grandes": {"cuauhtemoc": 180, "chihuahua": 330},
     "hermosillo":      {"chihuahua": 590, "culiacan": 420, "nogales": 280,
-                        "agua_prieta": 310},
+                        "agua_prieta": 310, "mexicali": 720},
     "nogales":         {"hermosillo": 280},
     "agua_prieta":     {"hermosillo": 310, "ciudad_juarez": 310},
     "culiacan":        {"hermosillo": 420, "mazatlan": 230, "los_mochis": 210},
-    "los_mochis":      {"culiacan": 210, "hermosillo": 490},
+    "los_mochis":      {"culiacan": 210, "hermosillo": 490, "la_paz": 600},
     "mazatlan":        {"culiacan": 230, "tepic": 310, "durango": 310},
     "mexicali":        {"tijuana": 190, "hermosillo": 720},
     "tijuana":         {"mexicali": 190},
