@@ -68,6 +68,7 @@ CITY_NODES: dict[str, tuple[float, float]] = {
     "matamoros":         (25.87,  -97.50),
     "piedras_negras":    (28.70, -100.52),
     "monclova":          (26.91, -101.42),
+    "linares":           (24.86,  -99.54),
     # Norte
     "durango":           (24.02, -104.66),
     "chihuahua":         (28.63, -106.07),
@@ -107,7 +108,7 @@ CITY_LABELS: dict[str, str] = {
     "monterrey": "Monterrey", "saltillo": "Saltillo",
     "torreon": "Torreón", "nuevo_laredo": "Nuevo Laredo",
     "reynosa": "Reynosa", "matamoros": "Matamoros",
-    "piedras_negras": "Piedras Negras", "monclova": "Monclova",
+    "piedras_negras": "Piedras Negras", "monclova": "Monclova", "linares": "Linares",
     "durango": "Durango", "chihuahua": "Chihuahua",
     "ciudad_juarez": "Ciudad Juárez", "parral": "Parral",
     "cuauhtemoc": "Cuauhtémoc", "nuevo_casas_grandes": "Nuevo Casas Grandes",
@@ -159,18 +160,21 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "nuevo_laredo":   "MEX-85",
         "reynosa":        "MEX-40",
         "matamoros":      "MEX-40",
-        "tampico":        "MEX-85",
+        "linares":        "MEX-85",  # MEX-85 sur → Tampico vía Linares
+        "monclova":       "MEX-53",  # directo noroeste
     },
     "saltillo": {
         "monterrey":      "MEX-40D",
         "torreon":        "MEX-40",
         "piedras_negras": "MEX-57",    # vía Monclova
         "monclova":       "MEX-57",
+        "linares":        "MEX-58",    # Saltillo→Linares vía Galeana
     },
     "monclova": {
         "saltillo":       "MEX-57",
         "piedras_negras": "MEX-57",
         "torreon":        "MEX-53",
+        "monterrey":      "MEX-53",    # directo sureste
     },
     "torreon": {
         "saltillo":       "MEX-40",
@@ -190,6 +194,11 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "monterrey":      "MEX-40",
         "reynosa":        "MEX-101",
         "tampico":        "MEX-180",
+    },
+    "linares": {
+        "monterrey":      "MEX-85",
+        "saltillo":       "MEX-58",    # MEX-58 vía Galeana
+        "tampico":        "MEX-85",
     },
     "piedras_negras": {
         "saltillo":       "MEX-57",
@@ -336,15 +345,15 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     },
     # ── Eje Golfo (MEX-180/85) ─────────────────────────────────────
     "tampico": {
-        "monterrey":      "MEX-85",
+        "linares":        "MEX-85",    # MEX-85 norte → Monterrey vía Linares
         "ciudad_valles":  "MEX-70",
         "veracruz":       "MEX-180",
         "matamoros":      "MEX-180",
-        # nota: tampico→pachuca se hace vía ciudad_valles, sin arista directa
     },
     "ciudad_valles": {
         "tampico":        "MEX-70",
         "san_luis_potosi":"MEX-70",
+        "pachuca":        "MEX-85",    # MEX-85 sur → CDMX vía sierra Hidalguense
     },
     # ── Eje Sureste (MEX-180/186) VH-Campeche-Mérida ──────────────
     "coatzacoalcos": {
@@ -517,9 +526,12 @@ _ALIASES_RAW: dict[str, str] = {
     "monterrey": "monterrey", "san nicolas": "monterrey",
     "apodaca": "monterrey", "escobedo": "monterrey",
     "guadalupe nl": "monterrey", "garcia nl": "monterrey",
-    "santa catarina nl": "monterrey", "linares": "monterrey",
-    "montemorelos": "monterrey", "cadereyta nl": "monterrey",
+    "santa catarina nl": "monterrey", "cadereyta nl": "monterrey",
     "san pedro garza garcia": "monterrey",
+    # Linares
+    "linares": "linares", "montemorelos": "linares",
+    "general teran": "linares", "hualahuises": "linares",
+    "iturbide nl": "linares",
     # Saltillo
     "saltillo": "saltillo", "ramos arizpe": "saltillo",
     "parras": "saltillo", "arteaga coah": "saltillo",
@@ -618,10 +630,13 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "matehuala":       {"san_luis_potosi": 190, "monterrey": 210},
     "leon":            {"queretaro": 150, "guadalajara": 175, "aguascalientes": 120},
     "monterrey":       {"matehuala": 210, "saltillo": 90, "nuevo_laredo": 230,
-                        "reynosa": 210, "matamoros": 260, "tampico": 280},
+                        "reynosa": 210, "matamoros": 260,
+                        "linares": 137, "monclova": 200},
     "saltillo":        {"monterrey": 90, "torreon": 250,
-                        "piedras_negras": 290, "monclova": 180},
-    "monclova":        {"saltillo": 180, "piedras_negras": 150, "torreon": 210},
+                        "piedras_negras": 290, "monclova": 180, "linares": 170},
+    "monclova":        {"saltillo": 180, "piedras_negras": 150, "torreon": 210,
+                        "monterrey": 200},
+    "linares":         {"monterrey": 137, "saltillo": 170, "tampico": 245},
     "torreon":         {"saltillo": 250, "durango": 260, "zacatecas": 250,
                         "monclova": 210},
     "nuevo_laredo":    {"monterrey": 230, "piedras_negras": 270},
@@ -665,9 +680,9 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "veracruz":        {"puebla": 250, "xalapa": 110, "tampico": 320,
                         "coatzacoalcos": 300},
     "xalapa":          {"veracruz": 110, "puebla": 300},
-    "tampico":         {"monterrey": 280, "ciudad_valles": 110,
+    "tampico":         {"linares": 245, "ciudad_valles": 110,
                         "veracruz": 320, "matamoros": 310},
-    "ciudad_valles":   {"tampico": 110, "san_luis_potosi": 200},
+    "ciudad_valles":   {"tampico": 110, "san_luis_potosi": 200, "pachuca": 480},
     "coatzacoalcos":   {"veracruz": 300, "villahermosa": 170, "oaxaca": 400},
     "villahermosa":    {"coatzacoalcos": 170, "campeche": 440, "cd_carmen": 200},
     "campeche":        {"villahermosa": 440, "merida": 190, "cd_carmen": 190},
@@ -774,7 +789,7 @@ def city_path_to_regions(city_path: list[str]) -> list[str]:
         "guadalajara": "occidente", "tepic": "occidente",
         "colima": "occidente", "morelia": "occidente",
         "lazaro_cardenas": "occidente", "manzanillo": "occidente",
-        "monterrey": "noreste", "saltillo": "norte",
+        "monterrey": "noreste", "linares": "noreste", "saltillo": "norte",
         "torreon": "norte", "nuevo_laredo": "noreste",
         "reynosa": "noreste", "matamoros": "noreste",
         "piedras_negras": "norte", "monclova": "norte",
