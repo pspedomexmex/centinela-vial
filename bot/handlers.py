@@ -24,8 +24,8 @@ async def cmd_start(bot: Bot, chat_id: int):
         parse_mode=ParseMode.MARKDOWN,
         text=(
             "🚛 *Centinela Vial* — Monitor de rutas para transporte de carga\n\n"
-            "• `/viaje ORIGEN → DESTINO` — Iniciar monitoreo\n"
-            "  Ej: `/viaje CDMX → Monterrey`\n\n"
+            "• `/viaje ORIGEN - DESTINO` — Iniciar monitoreo\n"
+            "  Ej: `/viaje CDMX - Monterrey`\n\n"
             "• `/alertas` — Incidentes en tu ruta ahora\n"
             "• `/trafico` — Estado del tráfico\n"
             "• `/estado` — Resumen del viaje activo\n"
@@ -45,14 +45,14 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
         await bot.send_message(
             chat_id=chat_id,
             parse_mode=ParseMode.MARKDOWN,
-            text="❌ Formato: `/viaje CDMX → Monterrey`",
+            text="❌ Formato: `/viaje CDMX - Monterrey`",
         )
         return
 
     await bot.send_message(
         chat_id=chat_id,
         parse_mode=ParseMode.MARKDOWN,
-        text=f"🔍 Calculando ruta *{origen}* → *{destino}*...",
+        text=f"🔍 Calculando ruta *{origen}* - *{destino}*...",
     )
 
     resultado = await asyncio.get_event_loop().run_in_executor(
@@ -90,7 +90,7 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id=chat_id,
             parse_mode=ParseMode.MARKDOWN,
-            text="❌ Sin viaje activo. Usa `/viaje ORIGEN → DESTINO`",
+            text="❌ Sin viaje activo. Usa `/viaje ORIGEN - DESTINO`",
         )
         return
 
@@ -107,11 +107,11 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id=chat_id,
             parse_mode=ParseMode.MARKDOWN,
-            text=f"✅ *Sin incidentes* en tu ruta\n_{viaje['origen']} → {viaje['destino']}_",
+            text=f"✅ *Sin incidentes* en tu ruta\n_{viaje['origen']} - {viaje['destino']}_",
         )
         return
 
-    lines = [f"📡 *Incidentes* — {viaje['origen']} → {viaje['destino']}\n"]
+    lines = [f"📡 *Incidentes* — {viaje['origen']} - {viaje['destino']}\n"]
     for inc in todos[:10]:
         lines.append(f"{inc['emoji']} *{inc['tipo']}*\n{inc['descripcion']}")
         if inc.get("autor"):
@@ -127,7 +127,7 @@ async def cmd_trafico(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id=chat_id,
             parse_mode=ParseMode.MARKDOWN,
-            text="❌ Sin viaje activo. Usa `/viaje ORIGEN → DESTINO`",
+            text="❌ Sin viaje activo. Usa `/viaje ORIGEN - DESTINO`",
         )
         return
 
@@ -146,7 +146,7 @@ async def cmd_trafico(bot: Bot, chat_id: int):
 
     texto = (
         f"{emoji} *Tráfico {nivel.upper()}*\n\n"
-        f"📍 {viaje['origen']} → 🏁 {viaje['destino']}\n"
+        f"📍 {viaje['origen']} - 🏁 {viaje['destino']}\n"
         f"⏱ Normal: {status['duracion_normal_min']} min\n"
         f"🚗 Con tráfico: *{status['duracion_trafico_min']} min*"
     )
@@ -162,7 +162,7 @@ async def cmd_estado(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id=chat_id,
             parse_mode=ParseMode.MARKDOWN,
-            text="❌ Sin viaje activo. Usa `/viaje ORIGEN → DESTINO`",
+            text="❌ Sin viaje activo. Usa `/viaje ORIGEN - DESTINO`",
         )
         return
 
@@ -174,7 +174,7 @@ async def cmd_estado(bot: Bot, chat_id: int):
         parse_mode=ParseMode.MARKDOWN,
         text=(
             f"🚛 *Viaje activo*\n\n"
-            f"📍 *{viaje['origen']}* → 🏁 *{viaje['destino']}*\n"
+            f"📍 *{viaje['origen']}* - 🏁 *{viaje['destino']}*\n"
             f"📏 {viaje['distancia_km']} km · ⏱ {viaje['duracion_hrs']} hrs\n\n"
             f"🗺 Regiones:\n{regiones_txt}"
         ),
@@ -209,5 +209,5 @@ async def cmd_detener(bot: Bot, chat_id: int):
     await bot.send_message(
         chat_id=chat_id,
         parse_mode=ParseMode.MARKDOWN,
-        text=f"🏁 Viaje *{viaje['origen']} → {viaje['destino']}* detenido. ¡Buen viaje! 🚛",
+        text=f"🏁 Viaje *{viaje['origen']} - {viaje['destino']}* detenido. ¡Buen viaje! 🚛",
     )
