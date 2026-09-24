@@ -9,7 +9,7 @@ from telegram.constants import ParseMode
 
 from regions.route_parser import calcular_ruta_y_regiones
 from regions.mexico_regions import REGIONS, get_regions_info
-from sources.waze_incidents import get_incidents_for_regions
+from sources.tomtom_incidents import get_incidents_for_regions as _tomtom_incidents
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import guardar_viaje, get_viaje, detener_viaje
@@ -101,18 +101,17 @@ async def cmd_alertas(bot: Bot, chat_id: int):
     await bot.send_message(chat_id=chat_id, text="🔍 Consultando incidentes...")
 
     regiones = viaje["regiones"]
-    waze_inc, capufe_inc = await asyncio.gather(
-        get_incidents_for_regions(regiones),
+    (tomtom_inc, tomtom_errors), capufe_inc = await asyncio.gather(
+        _tomtom_incidents(regiones),
         get_capufe_alerts_for_regions(regiones, REGIONS),
     )
-    todos = waze_inc + capufe_inc
+    todos = tomtom_inc + capufe_inc
 
     if not todos:
-        await bot.send_message(
-            chat_id=chat_id,
-            parse_mode=ParseMode.MARKDOWN,
-            text=f"✅ *Sin incidentes* en tu ruta\n_{viaje['origen']} - {viaje['destino']}_",
-        )
+        msg = f"✅ *Sin incidentes* en tu ruta\n_{viaje['origen']} - {viaje['destino']}_"
+        if tomtom_errors:
+            msg += f"\n\n⚠️ _Algunas fuentes no disponibles_"
+        await bot.send_message(chat_id=chat_id, parse_mode=ParseMode.MARKDOWN, text=msg)
         return
 
     lines = [f"📡 *Incidentes* — {viaje['origen']} - {viaje['destino']}\n"]

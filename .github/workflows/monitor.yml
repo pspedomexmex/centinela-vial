@@ -28,4 +28,5 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TOMTOM_KEY: ${{ secrets.TOMTOM_KEY }}
         run: python monitor/run.py

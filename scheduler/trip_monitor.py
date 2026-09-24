@@ -9,7 +9,7 @@ from telegram import Bot
 from telegram.constants import ParseMode
 
 from db.trips import get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas
-from sources.waze_incidents import get_incidents_for_regions
+from sources.tomtom_incidents import get_incidents_for_regions as _tomtom_incidents
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.twitter_monitor import get_tweets_for_regions
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
@@ -46,15 +46,15 @@ async def check_and_notify(bot: Bot, gmaps_key: str, twitter_token: str):
             continue
 
         # Recolectar incidentes de todas las fuentes en paralelo
-        waze_task = get_incidents_for_regions(regiones)
+        tomtom_task = _tomtom_incidents(regiones)
         capufe_task = get_capufe_alerts_for_regions(regiones, REGIONS)
         twitter_task = get_tweets_for_regions(regiones, REGIONS, twitter_token)
 
-        waze_inc, capufe_inc, twitter_inc = await asyncio.gather(
-            waze_task, capufe_task, twitter_task
+        (tomtom_inc, _), capufe_inc, twitter_inc = await asyncio.gather(
+            tomtom_task, capufe_task, twitter_task
         )
 
-        todos = waze_inc + capufe_inc + twitter_inc
+        todos = tomtom_inc + capufe_inc + twitter_inc
 
         # Filtrar ya enviados y críticos
         nuevos = []

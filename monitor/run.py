@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.supabase_client import (
     get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas,
 )
-from sources.waze_incidents import get_incidents_for_regions
+from sources.tomtom_incidents import get_incidents_for_regions as _tomtom_incidents
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from regions.mexico_regions import REGIONS
 
@@ -51,12 +51,12 @@ async def check_viaje(viaje: dict):
     if not regiones:
         return
 
-    waze_inc, capufe_inc = await asyncio.gather(
-        get_incidents_for_regions(regiones),
+    (tomtom_inc, _), capufe_inc = await asyncio.gather(
+        _tomtom_incidents(regiones),
         get_capufe_alerts_for_regions(regiones, REGIONS),
     )
 
-    todos = waze_inc + capufe_inc
+    todos = tomtom_inc + capufe_inc
     nuevos = []
 
     for inc in todos:
