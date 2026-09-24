@@ -13,6 +13,14 @@ from sources.tomtom_incidents import (
     get_incidents_for_city_route as _city_incidents,
     get_incidents_for_route as _region_incidents,
 )
+from sources.tomtom_flow import (
+    get_flow_alerts_for_city_route as _city_flow,
+    get_flow_alerts_for_regions as _region_flow,
+)
+from sources.openmeteo import (
+    get_weather_alerts_for_city_route as _city_weather,
+    get_weather_alerts_for_regions as _region_weather,
+)
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import guardar_viaje, get_viaje, detener_viaje
@@ -101,38 +109,68 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         )
         return
 
-    await bot.send_message(chat_id=chat_id, text="🔍 Consultando incidentes...")
+    await bot.send_message(chat_id=chat_id, text="🔍 Consultando ruta...")
 
     city_path = viaje.get("city_path")
-    regiones = viaje["regiones"]
+    regiones  = viaje["regiones"]
 
+    # Lanzar las 3 fuentes en paralelo
     if city_path:
-        tomtom_task = _city_incidents(city_path)
+        inc_task     = _city_incidents(city_path)
+        flow_task    = _city_flow(city_path)
+        weather_task = _city_weather(city_path)
     else:
-        tomtom_task = _region_incidents(regiones)
+        inc_task     = _region_incidents(regiones)
+        flow_task    = _region_flow(regiones)
+        weather_task = _region_weather(regiones)
 
-    (tomtom_inc, tomtom_errors), capufe_inc = await asyncio.gather(
-        tomtom_task,
-        get_capufe_alerts_for_regions(regiones, REGIONS),
+    (tomtom_inc, _), flow_inc, weather_inc = await asyncio.gather(
+        inc_task,
+        flow_task,
+        weather_task,
     )
-    todos = tomtom_inc + capufe_inc
 
-    if not todos:
-        msg = f"✅ *Sin incidentes* en tu ruta\n_{viaje['origen']} - {viaje['destino']}_"
-        if tomtom_errors:
-            msg += f"\n\n⚠️ _Algunas fuentes no disponibles_"
-        await bot.send_message(chat_id=chat_id, parse_mode=ParseMode.MARKDOWN, text=msg)
-        return
+    header = f"📡 *{viaje['origen']} → {viaje['destino']}*\n"
+    lines  = [header]
+    hay_algo = False
 
-    lines = [f"📡 *Incidentes* — {viaje['origen']} - {viaje['destino']}\n"]
-    for inc in todos[:10]:
-        hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
-        lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}\n{inc['descripcion']}")
-        if inc.get("autor"):
-            lines.append(f"_— {inc['autor']}_")
+    # ── Sección 1: Incidentes críticos ─────────────────────────
+    if tomtom_inc:
+        hay_algo = True
+        lines.append("🚨 *Incidentes en carretera*")
+        for inc in tomtom_inc[:6]:
+            hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
+            lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}")
+            lines.append(f"_{inc['descripcion']}_")
+            lines.append("")
+    else:
+        lines.append("✅ Sin incidentes en carretera\n")
+
+    # ── Sección 2: Flujo vial ───────────────────────────────────
+    if flow_inc:
+        hay_algo = True
+        lines.append("🚦 *Flujo vial*")
+        for inc in flow_inc[:4]:
+            lines.append(f"{inc['emoji']} {inc['descripcion']}")
         lines.append("")
+    else:
+        lines.append("🟢 Flujo vial normal\n")
 
-    await bot.send_message(chat_id=chat_id, parse_mode=ParseMode.MARKDOWN, text="\n".join(lines))
+    # ── Sección 3: Clima en ruta ────────────────────────────────
+    if weather_inc:
+        hay_algo = True
+        lines.append("🌦 *Clima en ruta*")
+        for inc in weather_inc[:4]:
+            lines.append(f"{inc['emoji']} {inc['descripcion']}")
+        lines.append("")
+    else:
+        lines.append("☀️ Clima favorable en toda la ruta")
+
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        text="\n".join(lines),
+    )
 
 
 async def cmd_trafico(bot: Bot, chat_id: int):

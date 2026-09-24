@@ -19,6 +19,14 @@ from sources.tomtom_incidents import (
     get_incidents_for_city_route as _city_incidents,
     get_incidents_for_route as _region_incidents,
 )
+from sources.tomtom_flow import (
+    get_flow_alerts_for_city_route as _city_flow,
+    get_flow_alerts_for_regions as _region_flow,
+)
+from sources.openmeteo import (
+    get_weather_alerts_for_city_route as _city_weather,
+    get_weather_alerts_for_regions as _region_weather,
+)
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from regions.mexico_regions import REGIONS
 
@@ -48,37 +56,42 @@ def hash_incidente(inc: dict) -> str:
 
 
 async def check_viaje(viaje: dict):
-    chat_id = viaje["chat_id"]
-    regiones = viaje["regiones"]
+    chat_id   = viaje["chat_id"]
+    city_path = viaje.get("city_path")
+    regiones  = viaje["regiones"]
 
     if not regiones:
         return
 
-    city_path = viaje.get("city_path")
-    regiones = viaje["regiones"]
+    # Lanzar las 3 fuentes en paralelo
+    if city_path:
+        inc_task     = _city_incidents(city_path)
+        flow_task    = _city_flow(city_path)
+        weather_task = _city_weather(city_path)
+    else:
+        inc_task     = _region_incidents(regiones)
+        flow_task    = _region_flow(regiones)
+        weather_task = _region_weather(regiones)
 
-    tomtom_task = _city_incidents(city_path) if city_path else _region_incidents(regiones)
-    (tomtom_inc, _), capufe_inc = await asyncio.gather(
-        tomtom_task,
-        get_capufe_alerts_for_regions(regiones, REGIONS),
+    (tomtom_inc, _), flow_inc, weather_inc = await asyncio.gather(
+        inc_task, flow_task, weather_task,
     )
 
-    todos = tomtom_inc + capufe_inc
+    todos  = tomtom_inc + flow_inc + weather_inc
     nuevos = []
-
     for inc in todos:
         h = hash_incidente(inc)
         if not ya_enviada(chat_id, h):
             nuevos.append((inc, h))
 
     if not nuevos:
-        logger.info(f"Sin incidentes nuevos para chat {chat_id}")
+        logger.info(f"Sin alertas nuevas para chat {chat_id}")
         return
 
-    lines = [f"🚨 *Alertas en tu ruta* — {viaje['origen']} → {viaje['destino']}\n"]
+    lines = [f"🚨 *Alertas* — {viaje['origen']} → {viaje['destino']}\n"]
     for inc, h in nuevos[:8]:
         hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
-        lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}\n{inc['descripcion']}")
+        lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}\n_{inc['descripcion']}_")
         if inc.get("autor"):
             lines.append(f"_— {inc['autor']}_")
         lines.append("")
