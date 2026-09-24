@@ -67,12 +67,17 @@ async def _fetch_tile(client: httpx.AsyncClient, lat: float, lon: float) -> list
 
 
 def _es_significativo(inc: dict) -> bool:
+    """Solo reportar incidentes en carreteras federales (con número MEX-XX)."""
     p = inc.get("properties", {})
     cat = p.get("iconCategory", 0)
     delay = p.get("magnitudeOfDelay", 0)
+    road_numbers = p.get("roadNumbers") or []
+    # Sin número de carretera federal → descarte (es calle urbana)
+    if not road_numbers:
+        return False
     if cat in CATEGORIAS_CRITICAS:
         return True
-    return delay >= 3  # mayor o indefinido (cierre)
+    return delay >= 2
 
 
 def _to_alerta(inc: dict) -> dict:
