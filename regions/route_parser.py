@@ -363,6 +363,7 @@ def _fallback_local(origen: str, destino: str) -> dict:
         "distancia_km": None,
         "duracion_hrs": None,
         "regiones": regiones,
+        "city_path": None,
         "estados": [],
     }
 
@@ -394,48 +395,86 @@ def _region_para_punto(lat: float, lng: float) -> str | None:
 # Función principal
 # ------------------------------------------------------------------
 
+def _via_city_graph(origen: str, destino: str) -> dict | None:
+    """
+    Intenta resolver la ruta via grafo de ciudades-hub.
+    Retorna el dict de resultado si tiene éxito, None si no resuelve alguno.
+    """
+    from regions.city_graph import (
+        resolve_city, dijkstra_city_path, city_path_to_regions,
+        CITY_LABELS, CITY_NODES,
+    )
+    ok = resolve_city(origen)
+    dk = resolve_city(destino)
+    if not ok or not dk:
+        return None
+
+    city_path = dijkstra_city_path(ok, dk)
+    if not city_path:
+        return None
+
+    regiones = city_path_to_regions(city_path)
+    return {
+        "error": None,
+        "origen_fmt": CITY_LABELS.get(ok, origen.title()),
+        "destino_fmt": CITY_LABELS.get(dk, destino.title()),
+        "distancia_km": None,
+        "duracion_hrs": None,
+        "regiones": regiones,
+        "city_path": city_path,
+        "estados": [],
+    }
+
+
 def calcular_ruta_y_regiones(origen: str, destino: str, gmaps_key: str) -> dict:
-    if not gmaps_key or not _GMAPS_AVAILABLE:
-        return _fallback_local(origen, destino)
+    # Prioridad 1: grafo de ciudades-hub (preciso, sin API externa)
+    city_result = _via_city_graph(origen, destino)
+    if city_result:
+        return city_result
 
-    try:
-        client = googlemaps.Client(key=gmaps_key)
-        directions = client.directions(
-            origin=f"{origen}, México",
-            destination=f"{destino}, México",
-            mode="driving",
-            language="es",
-            region="mx",
-        )
+    # Prioridad 2: Google Maps Directions (si hay key)
+    if gmaps_key and _GMAPS_AVAILABLE:
+        try:
+            client = googlemaps.Client(key=gmaps_key)
+            directions = client.directions(
+                origin=f"{origen}, México",
+                destination=f"{destino}, México",
+                mode="driving",
+                language="es",
+                region="mx",
+            )
 
-        if not directions:
-            return {"error": f"No se encontró ruta entre {origen} y {destino}"}
+            if not directions:
+                return {"error": f"No se encontró ruta entre {origen} y {destino}"}
 
-        leg = directions[0]["legs"][0]
-        steps = leg["steps"]
-        distancia_m = leg["distance"]["value"]
-        duracion_s = leg["duration"]["value"]
+            leg = directions[0]["legs"][0]
+            steps = leg["steps"]
+            distancia_m = leg["distance"]["value"]
+            duracion_s = leg["duration"]["value"]
 
-        puntos = [leg["start_location"]]
-        for step in steps[::max(1, len(steps) // 6)]:
-            puntos.append(step["end_location"])
-        puntos.append(leg["end_location"])
+            puntos = [leg["start_location"]]
+            for step in steps[::max(1, len(steps) // 6)]:
+                puntos.append(step["end_location"])
+            puntos.append(leg["end_location"])
 
-        regiones_ordenadas = []
-        for p in puntos:
-            r = _region_para_punto(p["lat"], p["lng"])
-            if r and r not in regiones_ordenadas:
-                regiones_ordenadas.append(r)
+            regiones_ordenadas = []
+            for p in puntos:
+                r = _region_para_punto(p["lat"], p["lng"])
+                if r and r not in regiones_ordenadas:
+                    regiones_ordenadas.append(r)
 
-        return {
-            "error": None,
-            "origen_fmt": leg["start_address"],
-            "destino_fmt": leg["end_address"],
-            "distancia_km": round(distancia_m / 1000),
-            "duracion_hrs": round(duracion_s / 3600, 1),
-            "regiones": regiones_ordenadas,
-            "estados": [],
-        }
+            return {
+                "error": None,
+                "origen_fmt": leg["start_address"],
+                "destino_fmt": leg["end_address"],
+                "distancia_km": round(distancia_m / 1000),
+                "duracion_hrs": round(duracion_s / 3600, 1),
+                "regiones": regiones_ordenadas,
+                "city_path": None,
+                "estados": [],
+            }
+        except Exception:
+            pass
 
-    except Exception:
-        return _fallback_local(origen, destino)
+    # Prioridad 3: fallback regional (BFS de 8 regiones)
+    return _fallback_local(origen, destino)

@@ -277,7 +277,7 @@ async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], l
         for t in CORRIDOR_TILES.get(pair, []):
             _add(t)
 
-    # Carreteras válidas: unión de los CORRIDOR_ROADS de cada arista de la ruta
+    # Un único set de carreteras válidas para toda la ruta regional
     allowed_roads: set[str] = set()
     for i in range(len(region_path) - 1):
         pair = frozenset({region_path[i], region_path[i + 1]})
@@ -286,18 +286,34 @@ async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], l
     async with httpx.AsyncClient(timeout=10) as client:
         results = await asyncio.gather(*[_fetch_tile(client, lat, lon) for lat, lon in tiles])
 
+    # Mismo filtro para todos los tiles (granularidad de región, no de ciudad)
+    allowed_per_tile = [allowed_roads] * len(tiles) if allowed_roads else None
+    incidents = _dedup_incidents(list(results), allowed_per_tile)
+    return incidents[:10], []
+
+
+def _dedup_incidents(
+    all_tile_results: list[list[dict]],
+    allowed_per_tile: list[set[str]] | None = None,
+) -> list[dict]:
+    """
+    Consolida resultados de varios tiles en una lista deduplicada.
+    Si allowed_per_tile no es None, cada tile filtra solo sus highways permitidas.
+    """
     road_count: dict[str, int] = {}
     seen_desc: set[str] = set()
     incidents: list[dict] = []
 
-    for tile_incs in results:
+    for idx, tile_incs in enumerate(all_tile_results):
+        tile_allowed = (allowed_per_tile[idx]
+                        if allowed_per_tile and idx < len(allowed_per_tile)
+                        else None)
         for inc in tile_incs:
             if not _es_significativo(inc):
                 continue
             p = inc.get("properties", {})
             roads = p.get("roadNumbers") or []
-            # Descartar incidentes en carreteras fuera del corredor de la ruta
-            if allowed_roads and not any(r in allowed_roads for r in roads):
+            if tile_allowed and not any(r in tile_allowed for r in roads):
                 continue
             road_key = ",".join(sorted(roads))
             if road_count.get(road_key, 0) >= 2:
@@ -311,6 +327,46 @@ async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], l
             incidents.append(alerta)
 
     incidents.sort(key=lambda x: x["severidad"], reverse=True)
+    return incidents
+
+
+async def get_incidents_for_city_route(
+    city_path: list[str],
+) -> tuple[list[dict], list[str]]:
+    """
+    Algoritmo preciso: 1 tile por ciudad en el path, filtrado a las MEX-XX
+    exactas de las aristas adyacentes (entrante + saliente).
+
+    Para CDMX → Cd. Juárez (path: cdmx, queretaro, slp, zacatecas, durango,
+    chihuahua, ciudad_juarez) consulta 6 tiles y filtra:
+      - Querétaro tile  → solo MEX-57D
+      - SLP tile        → MEX-57 + MEX-49
+      - Zacatecas tile  → MEX-49 + MEX-45
+      - Durango tile    → MEX-45
+      - Chihuahua tile  → MEX-45
+      - Cd. Juárez tile → MEX-45
+    Resultado: 0 ruido de AGS, GDL ni ningún corredor ajeno a la ruta.
+    """
+    if not TOMTOM_KEY:
+        return [], ["⚙️ TOMTOM_KEY no configurada"]
+    if not city_path:
+        return [], []
+
+    from regions.city_graph import get_route_segments
+
+    segments = get_route_segments(city_path)
+    if not segments:
+        return [], []
+
+    tiles = [(lat, lon) for _, lat, lon, _ in segments]
+    allowed_per_tile = [hw for _, _, _, hw in segments]
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        results = await asyncio.gather(
+            *[_fetch_tile(client, lat, lon) for lat, lon in tiles]
+        )
+
+    incidents = _dedup_incidents(list(results), allowed_per_tile)
     return incidents[:10], []
 
 

@@ -15,7 +15,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.supabase_client import (
     get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas,
 )
-from sources.tomtom_incidents import get_incidents_for_route as _tomtom_incidents
+from sources.tomtom_incidents import (
+    get_incidents_for_city_route as _city_incidents,
+    get_incidents_for_route as _region_incidents,
+)
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from regions.mexico_regions import REGIONS
 
@@ -51,8 +54,12 @@ async def check_viaje(viaje: dict):
     if not regiones:
         return
 
+    city_path = viaje.get("city_path")
+    regiones = viaje["regiones"]
+
+    tomtom_task = _city_incidents(city_path) if city_path else _region_incidents(regiones)
     (tomtom_inc, _), capufe_inc = await asyncio.gather(
-        _tomtom_incidents(regiones),
+        tomtom_task,
         get_capufe_alerts_for_regions(regiones, REGIONS),
     )
 
