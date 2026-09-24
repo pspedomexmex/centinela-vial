@@ -110,6 +110,23 @@ CORRIDOR_TILES: dict[frozenset, list[tuple[float, float]]] = {
     ],
 }
 
+# Carreteras federales relevantes para cada corredor.
+# En get_incidents_for_route se acumulan los sets de todos los pares de la ruta
+# y se descartan incidentes en carreteras que no pertenecen al corredor.
+CORRIDOR_ROADS: dict[frozenset, set[str]] = {
+    frozenset({"centro", "centro_norte"}):   {"MEX-57D", "MEX-57", "MEX-45D"},
+    frozenset({"centro_norte", "noreste"}):  {"MEX-57D", "MEX-57"},
+    frozenset({"centro", "occidente"}):      {"MEX-15D", "MEX-15"},
+    frozenset({"occidente", "centro_norte"}):{"MEX-80", "MEX-90", "MEX-45"},
+    frozenset({"centro_norte", "norte"}):    {"MEX-45", "MEX-45D", "MEX-49"},
+    frozenset({"norte", "noreste"}):         {"MEX-40", "MEX-40D", "MEX-57"},
+    frozenset({"noroeste", "norte"}):        {"MEX-16", "MEX-45"},
+    frozenset({"noroeste", "occidente"}):    {"MEX-15", "MEX-15D"},
+    frozenset({"centro", "golfo"}):          {"MEX-150D", "MEX-150", "MEX-85D", "MEX-85"},
+    frozenset({"noreste", "golfo"}):         {"MEX-85", "MEX-85D", "MEX-180", "MEX-180D"},
+    frozenset({"golfo", "peninsula"}):       {"MEX-186", "MEX-180", "MEX-261"},
+}
+
 CATEGORIA = {
     0:  ("⚠️",  "Incidente"),
     1:  ("🚨",  "Accidente"),
@@ -260,6 +277,12 @@ async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], l
         for t in CORRIDOR_TILES.get(pair, []):
             _add(t)
 
+    # Carreteras válidas: unión de los CORRIDOR_ROADS de cada arista de la ruta
+    allowed_roads: set[str] = set()
+    for i in range(len(region_path) - 1):
+        pair = frozenset({region_path[i], region_path[i + 1]})
+        allowed_roads.update(CORRIDOR_ROADS.get(pair, set()))
+
     async with httpx.AsyncClient(timeout=10) as client:
         results = await asyncio.gather(*[_fetch_tile(client, lat, lon) for lat, lon in tiles])
 
@@ -272,8 +295,11 @@ async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], l
             if not _es_significativo(inc):
                 continue
             p = inc.get("properties", {})
-            roads = tuple(sorted(p.get("roadNumbers") or []))
-            road_key = ",".join(roads)
+            roads = p.get("roadNumbers") or []
+            # Descartar incidentes en carreteras fuera del corredor de la ruta
+            if allowed_roads and not any(r in allowed_roads for r in roads):
+                continue
+            road_key = ",".join(sorted(roads))
             if road_count.get(road_key, 0) >= 2:
                 continue
             alerta = _to_alerta(inc)
