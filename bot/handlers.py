@@ -55,33 +55,37 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
         text=f"🔍 Calculando ruta *{origen}* - *{destino}*...",
     )
 
-    resultado = await asyncio.get_event_loop().run_in_executor(
-        None, calcular_ruta_y_regiones, origen, destino, GMAPS_KEY
-    )
+    try:
+        resultado = calcular_ruta_y_regiones(origen, destino, GMAPS_KEY)
 
-    if resultado.get("error"):
-        await bot.send_message(chat_id=chat_id, text=f"❌ {resultado['error']}")
-        return
+        if resultado.get("error"):
+            await bot.send_message(chat_id=chat_id, text=f"❌ {resultado['error']}")
+            return
 
-    guardar_viaje(chat_id, {"origen": origen, "destino": destino, **resultado})
+        guardar_viaje(chat_id, {"origen": origen, "destino": destino, **resultado})
 
-    regiones_info = get_regions_info(resultado["regiones"])
-    regiones_txt = " → ".join(f"{r['emoji']} {r['nombre']}" for r in regiones_info)
+        regiones_info = get_regions_info(resultado["regiones"])
+        regiones_txt = " → ".join(f"{r['emoji']} {r['nombre']}" for r in regiones_info)
 
-    await bot.send_message(
-        chat_id=chat_id,
-        parse_mode=ParseMode.MARKDOWN,
-        text=(
-            f"✅ *Viaje iniciado*\n\n"
-            f"📍 *{resultado['origen_fmt']}*\n"
-            f"🏁 *{resultado['destino_fmt']}*\n\n"
-            f"📏 Distancia: *{str(resultado['distancia_km']) + ' km' if resultado['distancia_km'] else 'N/D'}*\n"
-            f"⏱ Tiempo: *{str(resultado['duracion_hrs']) + ' hrs' if resultado['duracion_hrs'] else 'N/D'}*\n\n"
-            f"🗺 Regiones monitoreadas:\n{regiones_txt}\n\n"
-            f"📡 Recibirás alertas automáticas cada 30 min.\n"
-            f"Usa /alertas para consultar ahora mismo."
-        ),
-    )
+        dist = f"{resultado['distancia_km']} km" if resultado["distancia_km"] else "N/D"
+        dur = f"{resultado['duracion_hrs']} hrs" if resultado["duracion_hrs"] else "N/D"
+
+        await bot.send_message(
+            chat_id=chat_id,
+            parse_mode=ParseMode.MARKDOWN,
+            text=(
+                f"✅ *Viaje iniciado*\n\n"
+                f"📍 *{resultado['origen_fmt']}*\n"
+                f"🏁 *{resultado['destino_fmt']}*\n\n"
+                f"📏 Distancia: *{dist}*\n"
+                f"⏱ Tiempo: *{dur}*\n\n"
+                f"🗺 Regiones monitoreadas:\n{regiones_txt}\n\n"
+                f"📡 Recibirás alertas automáticas cada 30 min.\n"
+                f"Usa /alertas para consultar ahora mismo."
+            ),
+        )
+    except Exception as e:
+        await bot.send_message(chat_id=chat_id, text=f"❌ Error: {e}")
 
 
 async def cmd_alertas(bot: Bot, chat_id: int):
