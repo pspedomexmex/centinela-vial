@@ -118,8 +118,8 @@ def _fallback_local(origen: str, destino: str) -> dict:
         "error": None,
         "origen_fmt": origen.title(),
         "destino_fmt": destino.title(),
-        "distancia_km": "N/D",
-        "duracion_hrs": "N/D",
+        "distancia_km": None,
+        "duracion_hrs": None,
         "regiones": regiones,
         "estados": [],
     }
