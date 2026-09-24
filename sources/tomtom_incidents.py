@@ -146,6 +146,11 @@ CATEGORIA = {
 # Categorías que siempre se reportan sin importar la demora
 CATEGORIAS_CRITICAS = {1, 3, 8, 11}
 
+# Categorías que NO se reportan bajo ninguna circunstancia
+CATEGORIAS_IGNORADAS = {2, 4, 5, 6, 7, 9, 10, 14}
+# 2=Niebla, 4=Lluvia, 5=Hielo, 6=Tráfico, 7=Carril cerrado
+# 9=Obras, 10=Viento, 14=Vehículo averiado
+
 
 def _bbox(lat: float, lon: float) -> str:
     return f"{lon - TILE_HALF},{lat - TILE_HALF},{lon + TILE_HALF},{lat + TILE_HALF}"
@@ -171,14 +176,12 @@ def _es_significativo(inc: dict) -> bool:
     """Solo reportar incidentes en carreteras federales (con número MEX-XX)."""
     p = inc.get("properties", {})
     cat = p.get("iconCategory", 0)
-    delay = p.get("magnitudeOfDelay", 0)
     road_numbers = p.get("roadNumbers") or []
-    # Sin número de carretera federal → descarte (es calle urbana)
     if not road_numbers:
         return False
-    if cat in CATEGORIAS_CRITICAS:
-        return True
-    return delay >= 2
+    if cat in CATEGORIAS_IGNORADAS:
+        return False
+    return cat in CATEGORIAS_CRITICAS
 
 
 def _to_alerta(inc: dict) -> dict:
