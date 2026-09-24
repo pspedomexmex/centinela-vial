@@ -126,7 +126,8 @@ async def cmd_alertas(bot: Bot, chat_id: int):
 
     lines = [f"📡 *Incidentes* — {viaje['origen']} - {viaje['destino']}\n"]
     for inc in todos[:10]:
-        lines.append(f"{inc['emoji']} *{inc['tipo']}*\n{inc['descripcion']}")
+        hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
+        lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}\n{inc['descripcion']}")
         if inc.get("autor"):
             lines.append(f"_— {inc['autor']}_")
         lines.append("")

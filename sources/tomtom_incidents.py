@@ -6,7 +6,11 @@ Requiere TOMTOM_KEY en variables de entorno.
 import os
 import httpx
 import asyncio
+from datetime import datetime, timezone, timedelta
 from typing import Optional
+
+# UTC-6 (hora del centro de México, sin ajuste DST — suficiente precisión para alertas)
+_TZ_MX = timezone(timedelta(hours=-6))
 
 TOMTOM_KEY = os.environ.get("TOMTOM_KEY", "")
 TOMTOM_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
@@ -160,7 +164,7 @@ async def _fetch_tile(client: httpx.AsyncClient, lat: float, lon: float) -> list
     params = {
         "key": TOMTOM_KEY,
         "bbox": _bbox(lat, lon),
-        "fields": "{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,from,to,length,roadNumbers}}}",
+        "fields": "{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,startTime,from,to,length,roadNumbers}}}",
         "language": "es-ES",
         "timeValidityFilter": "present",
     }
@@ -184,6 +188,17 @@ def _es_significativo(inc: dict) -> bool:
     return cat in CATEGORIAS_CRITICAS
 
 
+def _fmt_hora(iso: str | None) -> str | None:
+    """'2024-01-15T20:30:00Z' → '14:30' (hora México UTC-6)"""
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.astimezone(_TZ_MX).strftime("%H:%M")
+    except Exception:
+        return None
+
+
 def _to_alerta(inc: dict) -> dict:
     p = inc.get("properties", {})
     cat = p.get("iconCategory", 0)
@@ -192,6 +207,7 @@ def _to_alerta(inc: dict) -> dict:
     desde = p.get("from", "")
     hasta = p.get("to", "")
     roads = ", ".join(p.get("roadNumbers", []))
+    hora = _fmt_hora(p.get("startTime"))
     desc_parts = [nombre]
     if roads:
         desc_parts.append(f"en {roads}")
@@ -203,6 +219,7 @@ def _to_alerta(inc: dict) -> dict:
         "tipo": nombre,
         "emoji": emoji,
         "descripcion": " ".join(desc_parts),
+        "hora": hora,
         "severidad": delay,
         "fuente": "TomTom",
     }

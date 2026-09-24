@@ -77,7 +77,8 @@ async def check_viaje(viaje: dict):
 
     lines = [f"🚨 *Alertas en tu ruta* — {viaje['origen']} → {viaje['destino']}\n"]
     for inc, h in nuevos[:8]:
-        lines.append(f"{inc['emoji']} *{inc['tipo']}*\n{inc['descripcion']}")
+        hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
+        lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}\n{inc['descripcion']}")
         if inc.get("autor"):
             lines.append(f"_— {inc['autor']}_")
         lines.append("")
