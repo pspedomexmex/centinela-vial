@@ -14,7 +14,7 @@ TOMTOM_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 # Máximo bbox permitido por TomTom: ~10,000 km² → usamos tiles de 0.7°×0.7°
 TILE_HALF = 0.35
 
-# Tiles (lat, lon) de ciudades clave por región — cubre los corredores principales
+# Tiles (lat, lon) de ciudades clave por región — usados en /alertas sin viaje activo
 REGION_TILES: dict[str, list[tuple[float, float]]] = {
     "noroeste":    [(29.1, -110.9), (24.8, -107.4), (23.2, -106.4)],
     "norte":       [(28.6, -106.1), (25.5, -103.4), (24.0, -104.7)],
@@ -24,6 +24,90 @@ REGION_TILES: dict[str, list[tuple[float, float]]] = {
     "centro":      [(19.4,  -99.1), (19.0,  -98.2), (19.3,  -99.7)],
     "golfo":       [(19.2,  -96.1), (18.0,  -92.9), (17.1,  -96.7)],
     "peninsula":   [(20.9,  -89.6), (21.2,  -86.8)],
+}
+
+# Tile ancla (1 punto representativo por región) para cubrir origen/destino
+REGION_ANCHOR: dict[str, tuple[float, float]] = {
+    "noroeste":     (29.1, -110.9),  # Hermosillo
+    "norte":        (28.6, -106.1),  # Chihuahua
+    "noreste":      (25.7, -100.3),  # Monterrey
+    "occidente":    (20.7, -103.4),  # Guadalajara
+    "centro_norte": (20.6, -100.4),  # Querétaro
+    "centro":       (19.4,  -99.1),  # CDMX
+    "golfo":        (19.2,  -96.1),  # Veracruz
+    "peninsula":    (20.9,  -89.6),  # Mérida
+}
+
+# Tiles de corredor para cada par de regiones adyacentes — enfocados en el eje
+# de las carreteras federales reales que usan los camiones de carga.
+# Clave: frozenset de las dos regiones. Valores: tiles a lo largo del corredor.
+CORRIDOR_TILES: dict[frozenset, list[tuple[float, float]]] = {
+    # MEX-57D: CDMX ↔ Querétaro
+    frozenset({"centro", "centro_norte"}): [
+        (20.0, -99.9),   # San Juan del Río
+        (19.7, -99.6),   # Tepeji del Río
+        (20.6, -100.4),  # Querétaro
+    ],
+    # MEX-57: SLP ↔ Monterrey (vía Matehuala)
+    frozenset({"centro_norte", "noreste"}): [
+        (21.8, -100.7),  # SLP norte
+        (23.1, -100.1),  # Matehuala
+        (24.2, -100.5),  # Huizache / Los Rayones
+    ],
+    # MEX-15D: CDMX ↔ Morelia/Maravatío
+    frozenset({"centro", "occidente"}): [
+        (19.5, -100.1),  # Lerma / Toluca
+        (19.7, -100.7),  # Atlacomulco
+        (19.7, -101.2),  # Maravatío
+    ],
+    # MEX-80: Guadalajara ↔ León/Aguascalientes
+    frozenset({"occidente", "centro_norte"}): [
+        (20.7, -103.4),  # Guadalajara norte
+        (20.9, -102.3),  # Lagos de Moreno
+        (21.1, -101.7),  # León / Silao
+    ],
+    # MEX-45: Zacatecas ↔ Durango
+    frozenset({"centro_norte", "norte"}): [
+        (22.0, -102.3),  # Zacatecas
+        (23.5, -102.7),  # Fresnillo
+        (24.8, -103.9),  # Durango sur
+    ],
+    # MEX-40: Torreón ↔ Saltillo/Monterrey
+    frozenset({"norte", "noreste"}): [
+        (25.5, -103.4),  # Torreón
+        (25.3, -101.5),  # Ramos Arizpe
+        (25.4, -101.0),  # Saltillo
+    ],
+    # MEX-16: Hermosillo ↔ Chihuahua (Sierra Tarahumara)
+    frozenset({"noroeste", "norte"}): [
+        (29.1, -110.9),  # Hermosillo norte
+        (28.0, -108.5),  # Puerto El Novillo / sierra
+        (28.6, -107.0),  # Cuauhtémoc
+    ],
+    # MEX-15: Mazatlán ↔ Tepic (espinazo del diablo)
+    frozenset({"noroeste", "occidente"}): [
+        (24.8, -107.4),  # Culiacán
+        (23.2, -106.4),  # Mazatlán / nudo Tepic
+        (22.3, -105.9),  # Tepic sur
+    ],
+    # MEX-150D: Puebla ↔ Veracruz (Cumbres de Maltrata)
+    frozenset({"centro", "golfo"}): [
+        (19.0, -97.5),   # Orizaba / Córdoba
+        (18.9, -97.1),   # Cumbres de Maltrata
+        (19.2, -96.1),   # Veracruz
+    ],
+    # MEX-85: Tampico ↔ Cd. Valles / San Luis
+    frozenset({"noreste", "golfo"}): [
+        (23.0, -98.8),   # Ciudad Mante
+        (22.2, -97.9),   # Tampico norte
+        (21.0, -97.5),   # Poza Rica
+    ],
+    # MEX-186: Villahermosa ↔ Campeche/Mérida
+    frozenset({"golfo", "peninsula"}): [
+        (18.0, -92.9),   # Villahermosa
+        (19.0, -91.0),   # Champotón
+        (20.9, -89.6),   # Mérida entrada
+    ],
 }
 
 CATEGORIA = {
@@ -140,6 +224,68 @@ async def get_incidents_for_region(region_key: str) -> list[dict]:
 
     incidents.sort(key=lambda x: x["severidad"], reverse=True)
     return incidents[:6]  # máx 6 por región
+
+
+async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], list[str]]:
+    """
+    Consulta incidentes solo en los corredores de la ruta.
+    Para cada par de regiones adyacentes usa CORRIDOR_TILES (eje de carretera real)
+    más un tile ancla en origen y destino. Mucho menos ruido que región completa.
+    Fallback a get_incidents_for_regions si la ruta tiene ≤1 región.
+    """
+    if not TOMTOM_KEY:
+        return [], ["⚙️ TOMTOM_KEY no configurada"]
+    if not region_path:
+        return [], []
+    if len(region_path) == 1:
+        inc = await get_incidents_for_region(region_path[0])
+        return inc, []
+
+    tiles: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+
+    def _add(t: tuple[float, float]):
+        if t not in seen:
+            seen.add(t)
+            tiles.append(t)
+
+    # Tiles ancla de origen y destino
+    for r in (region_path[0], region_path[-1]):
+        if r in REGION_ANCHOR:
+            _add(REGION_ANCHOR[r])
+
+    # Tiles de corredor por cada arista adyacente de la ruta
+    for i in range(len(region_path) - 1):
+        pair = frozenset({region_path[i], region_path[i + 1]})
+        for t in CORRIDOR_TILES.get(pair, []):
+            _add(t)
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        results = await asyncio.gather(*[_fetch_tile(client, lat, lon) for lat, lon in tiles])
+
+    road_count: dict[str, int] = {}
+    seen_desc: set[str] = set()
+    incidents: list[dict] = []
+
+    for tile_incs in results:
+        for inc in tile_incs:
+            if not _es_significativo(inc):
+                continue
+            p = inc.get("properties", {})
+            roads = tuple(sorted(p.get("roadNumbers") or []))
+            road_key = ",".join(roads)
+            if road_count.get(road_key, 0) >= 2:
+                continue
+            alerta = _to_alerta(inc)
+            desc_key = alerta["descripcion"][:60]
+            if desc_key in seen_desc:
+                continue
+            seen_desc.add(desc_key)
+            road_count[road_key] = road_count.get(road_key, 0) + 1
+            incidents.append(alerta)
+
+    incidents.sort(key=lambda x: x["severidad"], reverse=True)
+    return incidents[:10], []
 
 
 async def get_incidents_for_regions(region_keys: list[str]) -> tuple[list[dict], list[str]]:

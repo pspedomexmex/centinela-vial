@@ -9,7 +9,7 @@ from telegram.constants import ParseMode
 
 from regions.route_parser import calcular_ruta_y_regiones
 from regions.mexico_regions import REGIONS, get_regions_info
-from sources.tomtom_incidents import get_incidents_for_regions as _tomtom_incidents
+from sources.tomtom_incidents import get_incidents_for_route as _tomtom_incidents
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import guardar_viaje, get_viaje, detener_viaje

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.supabase_client import (
     get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas,
 )
-from sources.tomtom_incidents import get_incidents_for_regions as _tomtom_incidents
+from sources.tomtom_incidents import get_incidents_for_route as _tomtom_incidents
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from regions.mexico_regions import REGIONS
 
