@@ -68,9 +68,9 @@ ADYACENCIA = {
     "noroeste":    ["norte", "occidente"],
     "norte":       ["noroeste", "noreste", "centro_norte"],
     "noreste":     ["norte", "centro_norte", "golfo"],
-    "occidente":   ["noroeste", "norte", "centro_norte", "centro"],
+    "occidente":   ["noroeste", "centro_norte", "centro"],
     "centro_norte":["norte", "noreste", "occidente", "centro"],
-    "centro":      ["occidente", "centro_norte", "golfo"],
+    "centro":      ["centro_norte", "golfo", "occidente"],
     "golfo":       ["noreste", "centro", "peninsula"],
     "peninsula":   ["golfo"],
 }

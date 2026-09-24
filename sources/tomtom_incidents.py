@@ -115,21 +115,31 @@ async def get_incidents_for_region(region_key: str) -> list[dict]:
         tasks = [_fetch_tile(client, lat, lon) for lat, lon in tiles]
         results = await asyncio.gather(*tasks)
 
-    seen: set[str] = set()
+    # Agrupar por número de carretera — máx 2 incidentes distintos por carretera
+    road_count: dict[str, int] = {}
+    seen_desc: set[str] = set()
     incidents: list[dict] = []
+
     for tile_incs in results:
         for inc in tile_incs:
             if not _es_significativo(inc):
                 continue
             p = inc.get("properties", {})
-            key = f"{p.get('from','')}-{p.get('to','')}-{p.get('iconCategory',0)}"
-            if key in seen:
+            roads = tuple(sorted(p.get("roadNumbers") or []))
+            road_key = ",".join(roads)
+            if road_count.get(road_key, 0) >= 2:
                 continue
-            seen.add(key)
-            incidents.append(_to_alerta(inc))
+            alerta = _to_alerta(inc)
+            # Deduplicar por descripción resumida
+            desc_key = alerta["descripcion"][:60]
+            if desc_key in seen_desc:
+                continue
+            seen_desc.add(desc_key)
+            road_count[road_key] = road_count.get(road_key, 0) + 1
+            incidents.append(alerta)
 
     incidents.sort(key=lambda x: x["severidad"], reverse=True)
-    return incidents[:8]  # máx 8 por región
+    return incidents[:6]  # máx 6 por región
 
 
 async def get_incidents_for_regions(region_keys: list[str]) -> tuple[list[dict], list[str]]:
@@ -152,4 +162,5 @@ async def get_incidents_for_regions(region_keys: list[str]) -> tuple[list[dict],
             combined.extend(r)
 
     combined.sort(key=lambda x: x["severidad"], reverse=True)
+    combined = combined[:10]  # cap global
     return combined, errors
