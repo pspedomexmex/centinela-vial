@@ -3,6 +3,7 @@ Calcula rutas y detecta regiones.
 Con GMAPS_KEY: usa Google Maps Directions (distancia y tiempo reales).
 Sin GMAPS_KEY: fallback local con diccionario ciudad→región + BFS de adyacencia.
 """
+import unicodedata
 from collections import deque
 
 try:
@@ -11,56 +12,296 @@ try:
 except ImportError:
     _GMAPS_AVAILABLE = False
 
+
+def _normalizar(texto: str) -> str:
+    """'Querétaro' → 'queretaro': minúsculas + sin acentos ni diacríticos."""
+    nfkd = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
+
+
 # ------------------------------------------------------------------
-# Fallback local
+# Fallback local — diccionario completo de ciudades/estados → región
+# Todas las claves están sin acentos (el lookup normaliza la entrada).
+# Cuando una ciudad existe en dos estados se conserva la más relevante
+# para rutas de carga; las variantes con estado se incluyen explícitamente.
 # ------------------------------------------------------------------
 
-CIUDAD_A_REGION = {
-    # Noroeste
-    "tijuana": "noroeste", "mexicali": "noroeste", "ensenada": "noroeste",
-    "hermosillo": "noroeste", "nogales": "noroeste", "obregon": "noroeste",
-    "cd obregon": "noroeste", "guaymas": "noroeste",
-    "culiacan": "noroeste", "mazatlan": "noroeste", "los mochis": "noroeste",
-    # Norte
-    "chihuahua": "norte", "juarez": "norte", "ciudad juarez": "norte",
-    "cd juarez": "norte", "delicias": "norte", "parral": "norte",
-    "torreon": "norte", "gomez palacio": "norte",
-    "durango": "norte", "saltillo": "norte",
-    # Noreste
-    "monterrey": "noreste", "guadalupe": "noreste", "apodaca": "noreste",
-    "nuevo laredo": "noreste", "laredo": "noreste",
-    "reynosa": "noreste", "matamoros": "noreste", "tampico": "noreste",
-    "victoria": "noreste", "cd victoria": "noreste", "ciudad victoria": "noreste",
-    "san luis potosi": "noreste", "matehuala": "noreste", "rioverde": "noreste",
-    # Occidente
-    "guadalajara": "occidente", "zapopan": "occidente", "tlaquepaque": "occidente",
-    "tepic": "occidente", "colima": "occidente", "manzanillo": "occidente",
-    "morelia": "occidente", "uruapan": "occidente", "zamora": "occidente",
-    "la piedad": "occidente", "lazaro cardenas": "occidente",
-    # Centro-Norte / Bajío
-    "queretaro": "centro_norte", "leon": "centro_norte", "irapuato": "centro_norte",
-    "celaya": "centro_norte", "salamanca": "centro_norte", "silao": "centro_norte",
-    "guanajuato": "centro_norte", "aguascalientes": "centro_norte",
-    "zacatecas": "centro_norte", "fresnillo": "centro_norte",
-    # Centro
-    "cdmx": "centro", "ciudad de mexico": "centro", "mexico": "centro",
-    "df": "centro", "ecatepec": "centro", "naucalpan": "centro",
-    "toluca": "centro", "texcoco": "centro", "tlalnepantla": "centro",
-    "puebla": "centro", "cholula": "centro", "atlixco": "centro",
-    "cuernavaca": "centro", "cuautla": "centro",
-    "pachuca": "centro", "tulancingo": "centro",
-    "tlaxcala": "centro", "apizaco": "centro",
-    # Golfo / Sureste
-    "veracruz": "golfo", "xalapa": "golfo", "coatzacoalcos": "golfo",
-    "minatitlan": "golfo", "orizaba": "golfo", "cordoba": "golfo",
-    "villahermosa": "golfo", "cardenas": "golfo",
-    "oaxaca": "golfo", "salina cruz": "golfo", "huatulco": "golfo",
-    "tuxtla": "golfo", "tuxtla gutierrez": "golfo", "tapachula": "golfo",
-    "san cristobal": "golfo", "comitan": "golfo",
-    # Península de Yucatán
-    "merida": "peninsula", "cancun": "peninsula", "campeche": "peninsula",
-    "chetumal": "peninsula", "playa del carmen": "peninsula",
-    "tulum": "peninsula", "valladolid": "peninsula", "progreso": "peninsula",
+CIUDAD_A_REGION: dict[str, str] = {
+
+    # ── ESTADOS (nombres completos y abreviaturas) ──────────────────
+    "baja california":       "noroeste", "bc":              "noroeste",
+    "baja california sur":   "noroeste", "bcs":             "noroeste",
+    "sonora":                "noroeste", "son":             "noroeste",
+    "sinaloa":               "noroeste", "sin":             "noroeste",
+    "chihuahua estado":      "norte",    "coahuila":        "norte",
+    "coah":                  "norte",    "durango estado":  "norte",
+    "nuevo leon":            "noreste",  "nl":              "noreste",
+    "tamaulipas":            "noreste",  "tam":             "noreste",
+    "san luis potosi estado":"noreste",  "slp":             "noreste",
+    "jalisco":               "occidente","jal":             "occidente",
+    "nayarit":               "occidente","nay":             "occidente",
+    "colima estado":         "occidente","col":             "occidente",
+    "michoacan":             "occidente","mich":            "occidente",
+    "queretaro estado":      "centro_norte","qro":          "centro_norte",
+    "guanajuato estado":     "centro_norte","gto":          "centro_norte",
+    "aguascalientes estado": "centro_norte","ags":          "centro_norte",
+    "zacatecas estado":      "centro_norte","zac":          "centro_norte",
+    "ciudad de mexico":      "centro",   "cdmx":            "centro",
+    "df":                    "centro",   "estado de mexico":"centro",
+    "edomex":                "centro",   "hidalgo":         "centro",
+    "hgo":                   "centro",   "tlaxcala estado": "centro",
+    "tlax":                  "centro",   "puebla estado":   "centro",
+    "pue":                   "centro",   "morelos":         "centro",
+    "mor":                   "centro",   "guerrero":        "centro",
+    "gro":                   "centro",
+    "veracruz estado":       "golfo",    "ver":             "golfo",
+    "tabasco":               "golfo",    "tab":             "golfo",
+    "oaxaca estado":         "golfo",    "oax":             "golfo",
+    "chiapas":               "golfo",    "chis":            "golfo",
+    "campeche estado":       "peninsula","camp":            "peninsula",
+    "yucatan":               "peninsula","yuc":             "peninsula",
+    "quintana roo":          "peninsula","qroo":            "peninsula",
+
+    # ── NOROESTE — Baja California ──────────────────────────────────
+    "tijuana":           "noroeste", "tecate":            "noroeste",
+    "mexicali":          "noroeste", "rosarito":          "noroeste",
+    "ensenada":          "noroeste", "san quintin":       "noroeste",
+    "san felipe":        "noroeste",
+
+    # ── NOROESTE — Baja California Sur ──────────────────────────────
+    "la paz":            "noroeste", "los cabos":         "noroeste",
+    "cabo san lucas":    "noroeste", "san jose del cabo": "noroeste",
+    "loreto bcs":        "noroeste", "santa rosalia":     "noroeste",
+    "guerrero negro":    "noroeste", "ciudad constitucion":"noroeste",
+
+    # ── NOROESTE — Sonora ───────────────────────────────────────────
+    "hermosillo":        "noroeste", "nogales":           "noroeste",
+    "cd obregon":        "noroeste", "ciudad obregon":    "noroeste",
+    "obregon":           "noroeste", "guaymas":           "noroeste",
+    "empalme":           "noroeste", "navojoa":           "noroeste",
+    "agua prieta":       "noroeste", "santa ana son":     "noroeste",
+    "caborca":           "noroeste", "magdalena son":     "noroeste",
+    "alamos":            "noroeste", "puerto penasco":    "noroeste",
+    "san luis rio colorado":"noroeste",
+
+    # ── NOROESTE — Sinaloa ──────────────────────────────────────────
+    "culiacan":          "noroeste", "mazatlan":          "noroeste",
+    "los mochis":        "noroeste", "guasave":           "noroeste",
+    "ahome":             "noroeste", "guamuchil":         "noroeste",
+    "mocorito":          "noroeste", "rosario sin":       "noroeste",
+    "escuinapa":         "noroeste", "el fuerte":         "noroeste",
+
+    # ── NORTE — Chihuahua ───────────────────────────────────────────
+    "chihuahua":         "norte",    "juarez":            "norte",
+    "ciudad juarez":     "norte",    "cd juarez":         "norte",
+    "delicias":          "norte",    "cuauhtemoc chih":   "norte",
+    "parral":            "norte",    "hidalgo del parral":"norte",
+    "nuevo casas grandes":"norte",   "ojinaga":           "norte",
+    "camargo chih":      "norte",    "jimenez":           "norte",
+
+    # ── NORTE — Durango ─────────────────────────────────────────────
+    "durango":           "norte",    "gomez palacio":     "norte",
+    "lerdo":             "norte",    "santiago papasquiaro":"norte",
+    "vicente guerrero dgo":"norte",  "canatlán":          "norte",
+
+    # ── NORTE — Coahuila ────────────────────────────────────────────
+    "saltillo":          "norte",    "torreon":           "norte",
+    "monclova":          "norte",    "piedras negras":    "norte",
+    "acuna":             "norte",    "ciudad acuna":      "norte",
+    "cd acuna":          "norte",    "sabinas coah":      "norte",
+    "nueva rosita":      "norte",    "muzquiz":           "norte",
+    "frontera coah":     "norte",    "ramos arizpe":      "norte",
+    "parras":            "norte",    "allende coah":      "norte",
+
+    # ── NORESTE — Nuevo León ────────────────────────────────────────
+    "monterrey":         "noreste",  "san nicolas":       "noreste",
+    "apodaca":           "noreste",  "escobedo":          "noreste",
+    "general escobedo":  "noreste",  "santa catarina nl": "noreste",
+    "garcia nl":         "noreste",  "linares":           "noreste",
+    "montemorelos":      "noreste",  "cadereyta nl":      "noreste",
+    "sabinas hidalgo":   "noreste",  "cerralvo":          "noreste",
+    "guadalupe nl":      "noreste",  "san pedro garza garcia":"noreste",
+    "santiago nl":       "noreste",
+
+    # ── NORESTE — Tamaulipas ────────────────────────────────────────
+    "nuevo laredo":      "noreste",  "laredo":            "noreste",
+    "reynosa":           "noreste",  "matamoros":         "noreste",
+    "tampico":           "noreste",  "altamira":          "noreste",
+    "ciudad madero":     "noreste",  "cd madero":         "noreste",
+    "victoria":          "noreste",  "cd victoria":       "noreste",
+    "ciudad victoria":   "noreste",  "mante":             "noreste",
+    "ciudad mante":      "noreste",  "cd mante":          "noreste",
+    "valle hermoso":     "noreste",  "rio bravo":         "noreste",
+    "miguel aleman":     "noreste",  "camargo tam":       "noreste",
+    "gonzalez":          "noreste",  "el mante":          "noreste",
+
+    # ── NORESTE — San Luis Potosí ───────────────────────────────────
+    "san luis potosi":   "noreste",  "matehuala":         "noreste",
+    "rioverde":          "noreste",  "ciudad valles":     "noreste",
+    "cd valles":         "noreste",  "tamazunchale":      "noreste",
+    "cerritos":          "noreste",  "venado":            "noreste",
+    "ebano":             "noreste",  "soledad":           "noreste",
+
+    # ── OCCIDENTE — Jalisco ─────────────────────────────────────────
+    "guadalajara":       "occidente","zapopan":           "occidente",
+    "tlaquepaque":       "occidente","tonala jal":        "occidente",
+    "tlajomulco":        "occidente","puerto vallarta":   "occidente",
+    "lagos de moreno":   "occidente","ocotlan jal":       "occidente",
+    "la barca":          "occidente","tepatitlan":        "occidente",
+    "arandas":           "occidente","ciudad guzman":     "occidente",
+    "cd guzman":         "occidente","autlan":            "occidente",
+    "ameca":             "occidente","tequila":           "occidente",
+    "encarnacion de diaz":"occidente","zapotlanejo":      "occidente",
+    "acatlan de juarez": "occidente",
+
+    # ── OCCIDENTE — Nayarit ─────────────────────────────────────────
+    "tepic":             "occidente","bahia de banderas": "occidente",
+    "nuevo vallarta":    "occidente","compostela":        "occidente",
+    "san blas":          "occidente","ixtlan del rio":    "occidente",
+    "tuxpan nay":        "occidente",
+
+    # ── OCCIDENTE — Colima ──────────────────────────────────────────
+    "colima":            "occidente","manzanillo":        "occidente",
+    "tecoman":           "occidente","villa de alvarez":  "occidente",
+
+    # ── OCCIDENTE — Michoacán ───────────────────────────────────────
+    "morelia":           "occidente","uruapan":           "occidente",
+    "zamora":            "occidente","lazaro cardenas":   "occidente",
+    "apatzingan":        "occidente","la piedad":         "occidente",
+    "jacona":            "occidente","patzcuaro":         "occidente",
+    "sahuayo":           "occidente","zitacuaro":         "occidente",
+    "maravatio":         "occidente","jiquilpan":         "occidente",
+    "zacapu":            "occidente","los reyes mich":    "occidente",
+    "hidalgo mich":      "occidente","puruaran":          "occidente",
+
+    # ── CENTRO-NORTE / BAJÍO — Querétaro ────────────────────────────
+    "queretaro":         "centro_norte","san juan del rio":"centro_norte",
+    "tequisquiapan":     "centro_norte","cadereyta qro":  "centro_norte",
+    "jalpan":            "centro_norte","amealco":        "centro_norte",
+    "colon qro":         "centro_norte","pedro escobedo": "centro_norte",
+
+    # ── CENTRO-NORTE / BAJÍO — Guanajuato ───────────────────────────
+    "leon":              "centro_norte","irapuato":       "centro_norte",
+    "celaya":            "centro_norte","salamanca":      "centro_norte",
+    "silao":             "centro_norte","guanajuato":     "centro_norte",
+    "san francisco del rincon":"centro_norte",
+    "dolores hidalgo":   "centro_norte","acambaro":       "centro_norte",
+    "salvatierra":       "centro_norte","cortazar":       "centro_norte",
+    "uriangato":         "centro_norte","moroleon":       "centro_norte",
+    "yuriria":           "centro_norte","abasolo gto":    "centro_norte",
+    "valle de santiago": "centro_norte","san jose iturbide":"centro_norte",
+
+    # ── CENTRO-NORTE / BAJÍO — Aguascalientes ───────────────────────
+    "aguascalientes":    "centro_norte","rincon de romos":"centro_norte",
+    "pabellon de arteaga":"centro_norte","calvillo":      "centro_norte",
+    "jesus maria ags":   "centro_norte",
+
+    # ── CENTRO-NORTE / BAJÍO — Zacatecas ────────────────────────────
+    "zacatecas":         "centro_norte","fresnillo":      "centro_norte",
+    "guadalupe zac":     "centro_norte","jerez":          "centro_norte",
+    "jalpa":             "centro_norte","tlaltenango":    "centro_norte",
+    "sombrerete":        "centro_norte","juan aldama zac":"centro_norte",
+    "loreto zac":        "centro_norte","villanueva":     "centro_norte",
+    "rio grande zac":    "centro_norte",
+
+    # ── CENTRO — CDMX / Estado de México ────────────────────────────
+    "mexico":            "centro",    "cdmx":             "centro",
+    "df":                "centro",    "ciudad mexico":    "centro",
+    "ecatepec":          "centro",    "naucalpan":        "centro",
+    "tlalnepantla":      "centro",    "texcoco":          "centro",
+    "nezahualcoyotl":    "centro",    "tultitlan":        "centro",
+    "cuautitlan":        "centro",    "ixtapaluca":       "centro",
+    "chalco":            "centro",    "metepec":          "centro",
+    "toluca":            "centro",    "lerma":            "centro",
+    "atlacomulco":       "centro",    "zumpango":         "centro",
+    "tultepec":          "centro",    "tepotzotlan":      "centro",
+    "huehuetoca":        "centro",    "coacalco":         "centro",
+
+    # ── CENTRO — Hidalgo ────────────────────────────────────────────
+    "pachuca":           "centro",    "tulancingo":       "centro",
+    "tizayuca":          "centro",    "actopan":          "centro",
+    "ixmiquilpan":       "centro",    "zimapan":          "centro",
+    "huejutla":          "centro",    "tula":             "centro",
+    "tepeji del rio":    "centro",    "tepeapulco":       "centro",
+    "apan":              "centro",
+
+    # ── CENTRO — Tlaxcala ───────────────────────────────────────────
+    "tlaxcala":          "centro",    "apizaco":          "centro",
+    "huamantla":         "centro",    "calpulalpan":      "centro",
+    "san pablo del monte":"centro",   "zacatelco":        "centro",
+
+    # ── CENTRO — Puebla ─────────────────────────────────────────────
+    "puebla":            "centro",    "cholula":          "centro",
+    "atlixco":           "centro",    "tehuacan":         "centro",
+    "san martin texmelucan":"centro", "izucar de matamoros":"centro",
+    "acatlan pue":       "centro",    "tepeaca":          "centro",
+    "amozoc":            "centro",    "huejotzingo":      "centro",
+    "cd serdan":         "centro",    "ciudad serdan":    "centro",
+    "libres":            "centro",    "zacatlan":         "centro",
+
+    # ── CENTRO — Morelos ────────────────────────────────────────────
+    "cuernavaca":        "centro",    "cuautla":          "centro",
+    "temixco":           "centro",    "jiutepec":         "centro",
+    "yautepec":          "centro",    "jojutla":          "centro",
+    "zacatepec":         "centro",    "puente de ixtla":  "centro",
+
+    # ── CENTRO — Guerrero ───────────────────────────────────────────
+    "chilpancingo":      "centro",    "acapulco":         "centro",
+    "iguala":            "centro",    "taxco":            "centro",
+    "zihuatanejo":       "centro",    "ixtapa":           "centro",
+    "chilapa":           "centro",    "tlapa":            "centro",
+    "cd altamirano":     "centro",    "ciudad altamirano":"centro",
+    "petatlán":          "centro",    "tecpan":           "centro",
+
+    # ── GOLFO — Veracruz ────────────────────────────────────────────
+    "veracruz":          "golfo",     "xalapa":           "golfo",
+    "coatzacoalcos":     "golfo",     "minatitlan":       "golfo",
+    "orizaba":           "golfo",     "cordoba":          "golfo",
+    "poza rica":         "golfo",     "tuxpan ver":       "golfo",
+    "papantla":          "golfo",     "san andres tuxtla":"golfo",
+    "cosamaloapan":      "golfo",     "acayucan":         "golfo",
+    "cosoleacaque":      "golfo",     "coatepec":         "golfo",
+    "perote":            "golfo",     "tierra blanca":    "golfo",
+    "alvarado":          "golfo",     "boca del rio":     "golfo",
+    "veracruz puerto":   "golfo",     "san juan bautista tuxtepec":"golfo",
+    "tuxtepec":          "golfo",     "martinez de la torre":"golfo",
+
+    # ── GOLFO — Tabasco ─────────────────────────────────────────────
+    "villahermosa":      "golfo",     "cardenas tab":     "golfo",
+    "comalcalco":        "golfo",     "huimanguillo":     "golfo",
+    "paraiso":           "golfo",     "macuspana":        "golfo",
+    "tenosique":         "golfo",     "jalpa de menendez":"golfo",
+
+    # ── GOLFO — Oaxaca ──────────────────────────────────────────────
+    "oaxaca":            "golfo",     "salina cruz":      "golfo",
+    "huatulco":          "golfo",     "pochutla":         "golfo",
+    "juchitan":          "golfo",     "tehuantepec":      "golfo",
+    "miahuatlan":        "golfo",     "ocotlan oax":      "golfo",
+    "tuxtepec oax":      "golfo",     "pinotepa nacional":"golfo",
+    "cd ixtepec":        "golfo",     "matias romero":    "golfo",
+
+    # ── GOLFO — Chiapas ─────────────────────────────────────────────
+    "tuxtla":            "golfo",     "tuxtla gutierrez": "golfo",
+    "tapachula":         "golfo",     "san cristobal":    "golfo",
+    "san cristobal de las casas":"golfo","comitan":       "golfo",
+    "palenque":          "golfo",     "tonala chis":      "golfo",
+    "arriaga":           "golfo",     "ocozocoautla":     "golfo",
+    "cintalapa":         "golfo",     "pichucalco":       "golfo",
+    "villaflores":       "golfo",     "huixtla":          "golfo",
+    "mapastepec":        "golfo",
+
+    # ── PENÍNSULA DE YUCATÁN ────────────────────────────────────────
+    "merida":            "peninsula", "cancun":           "peninsula",
+    "campeche":          "peninsula", "chetumal":         "peninsula",
+    "playa del carmen":  "peninsula", "cozumel":          "peninsula",
+    "tulum":             "peninsula", "valladolid yuc":   "peninsula",
+    "progreso":          "peninsula", "izamal":           "peninsula",
+    "ticul":             "peninsula", "motul":            "peninsula",
+    "felipe carrillo puerto":"peninsula","bacalar":       "peninsula",
+    "ciudad del carmen": "peninsula", "cd del carmen":    "peninsula",
+    "champoton":         "peninsula", "hopelchen":        "peninsula",
+    "escarcega":         "peninsula", "jose maria morelos":"peninsula",
+    "tekax":             "peninsula", "tizimin":          "peninsula",
 }
 
 # Adyacencia entre regiones (grafo no dirigido)
@@ -77,9 +318,10 @@ ADYACENCIA = {
 
 
 def _region_para_ciudad(nombre: str) -> str | None:
-    clave = nombre.lower().strip()
+    clave = _normalizar(nombre)
     if clave in CIUDAD_A_REGION:
         return CIUDAD_A_REGION[clave]
+    # Búsqueda parcial: "San Luis" encuentra "san luis potosi", etc.
     for ciudad, region in CIUDAD_A_REGION.items():
         if ciudad in clave or clave in ciudad:
             return region
