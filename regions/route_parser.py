@@ -402,24 +402,25 @@ def _via_city_graph(origen: str, destino: str) -> dict | None:
     """
     from regions.city_graph import (
         resolve_city, dijkstra_city_path, city_path_to_regions,
-        CITY_LABELS, CITY_NODES,
+        CITY_LABELS, CITY_NODES, route_stats,
     )
     ok = resolve_city(origen)
     dk = resolve_city(destino)
     if not ok or not dk:
         return None
 
-    city_path = dijkstra_city_path(ok, dk)
+    city_path = dijkstra_city_path(ok, dk, by_time=True)
     if not city_path:
         return None
 
+    stats = route_stats(city_path)
     regiones = city_path_to_regions(city_path)
     return {
         "error": None,
         "origen_fmt": CITY_LABELS.get(ok, origen.title()),
         "destino_fmt": CITY_LABELS.get(dk, destino.title()),
-        "distancia_km": None,
-        "duracion_hrs": None,
+        "distancia_km": stats["km"],
+        "duracion_hrs": stats["hrs"],
         "regiones": regiones,
         "city_path": city_path,
         "estados": [],

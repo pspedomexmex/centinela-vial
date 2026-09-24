@@ -700,6 +700,60 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "pachuca":         {"cdmx": 90, "ciudad_valles": 480},
 }
 
+# ── Velocidades especiales por tramo (km/h para transporte de carga) ──────────
+# Tramos de montaña, ferry o carreteras de 2 carriles sinuosas.
+# El resto se calcula automáticamente: autopista (sufijo D) = 90, libre = 75.
+_SLOW_EDGES: dict[tuple[str, str], int] = {
+    ("mazatlan",       "durango"):         50,  # MEX-40 Espinazo del Diablo
+    ("durango",        "mazatlan"):        50,
+    ("morelia",        "lazaro_cardenas"): 60,  # MEX-37 sierra Michoacán
+    ("lazaro_cardenas","morelia"):         60,
+    ("chihuahua",      "hermosillo"):      65,  # MEX-16 sierra Tarahumara
+    ("hermosillo",     "chihuahua"):       65,
+    ("saltillo",       "linares"):         60,  # MEX-58 vía Galeana (montaña)
+    ("linares",        "saltillo"):        60,
+    ("tuxtla",         "villahermosa"):    60,  # MEX-195 sierra chiapaneca
+    ("villahermosa",   "tuxtla"):          60,
+    ("los_mochis",     "la_paz"):          55,  # transbordador Topolobampo-La Paz
+    ("la_paz",         "los_mochis"):      55,
+    ("oaxaca",         "coatzacoalcos"):   65,  # MEX-185 istmo
+    ("coatzacoalcos",  "oaxaca"):          65,
+    ("pachuca",        "ciudad_valles"):   55,  # MEX-85 sierra Hidalguense
+    ("ciudad_valles",  "pachuca"):         55,
+}
+
+
+def _edge_speed(origin: str, dest: str) -> int:
+    """km/h promedio para transporte de carga según tipo de carretera."""
+    override = _SLOW_EDGES.get((origin, dest))
+    if override:
+        return override
+    hw = CITY_EDGES.get(origin, {}).get(dest, "")
+    return 90 if hw.endswith("D") else 75
+
+
+# Tiempo estimado en minutos por arista, calculado automáticamente.
+EDGE_TIME_MIN: dict[str, dict[str, int]] = {
+    origin: {
+        dest: max(1, round(km / _edge_speed(origin, dest) * 60))
+        for dest, km in dests.items()
+    }
+    for origin, dests in EDGE_KM.items()
+}
+
+
+def route_stats(city_path: list[str]) -> dict:
+    """Km totales y tiempo estimado de viaje para un city_path dado."""
+    km = sum(
+        EDGE_KM.get(city_path[i], {}).get(city_path[i + 1], 0)
+        for i in range(len(city_path) - 1)
+    )
+    minutes = sum(
+        EDGE_TIME_MIN.get(city_path[i], {}).get(city_path[i + 1], 0)
+        for i in range(len(city_path) - 1)
+    )
+    return {"km": km, "min": minutes, "hrs": round(minutes / 60, 1)}
+
 
 def bfs_city_path(origin: str, dest: str) -> list[str] | None:
     """BFS mínimo sobre CITY_EDGES — solo para tests o paths cortos."""
@@ -718,28 +772,31 @@ def bfs_city_path(origin: str, dest: str) -> list[str] | None:
     return None
 
 
-def dijkstra_city_path(origin: str, dest: str) -> list[str] | None:
+def dijkstra_city_path(
+    origin: str, dest: str, by_time: bool = False
+) -> list[str] | None:
     """
-    Dijkstra sobre CITY_EDGES ponderado por EDGE_KM.
-    Devuelve la ruta de menor distancia total en km.
-    Para aristas sin distancia definida usa 999 (penaliza rutas desconocidas).
+    Dijkstra sobre CITY_EDGES.
+    by_time=False (default): minimiza km — compatible con código existente.
+    by_time=True: minimiza tiempo de viaje (EDGE_TIME_MIN).
+    Aristas sin peso definido reciben penalización 999.
     """
     if origin == dest:
         return [origin]
-    # heap: (dist_acumulada, ciudad_actual, path)
+    weights = EDGE_TIME_MIN if by_time else EDGE_KM
     heap: list[tuple[int, str, list[str]]] = [(0, origin, [origin])]
     visited: set[str] = set()
     while heap:
-        dist, city, path = heapq.heappop(heap)
+        cost, city, path = heapq.heappop(heap)
         if city in visited:
             continue
         visited.add(city)
         if city == dest:
             return path
-        for neighbor, highway in CITY_EDGES.get(city, {}).items():
+        for neighbor in CITY_EDGES.get(city, {}):
             if neighbor not in visited:
-                km = EDGE_KM.get(city, {}).get(neighbor, 999)
-                heapq.heappush(heap, (dist + km, neighbor, path + [neighbor]))
+                w = weights.get(city, {}).get(neighbor, 999)
+                heapq.heappush(heap, (cost + w, neighbor, path + [neighbor]))
     return None
 
 
