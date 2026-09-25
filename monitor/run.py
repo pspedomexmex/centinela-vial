@@ -28,6 +28,10 @@ from sources.openmeteo import (
     get_weather_alerts_for_city_route as _city_weather,
     get_weather_alerts_for_regions as _region_weather,
 )
+from sources.nitter_monitor import (
+    get_tweets_for_city_route as _city_tweets,
+    get_tweets_for_regions as _region_tweets,
+)
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from regions.mexico_regions import REGIONS
 
@@ -69,13 +73,15 @@ async def check_viaje(viaje: dict):
         inc_task     = _city_incidents(city_path)
         flow_task    = _city_flow(city_path)
         weather_task = _city_weather(city_path)
+        tweet_task   = _city_tweets(city_path)
     else:
         inc_task     = _region_incidents(regiones)
         flow_task    = _region_flow(regiones)
         weather_task = _region_weather(regiones)
+        tweet_task   = _region_tweets(regiones)
 
-    (tomtom_inc, _), flow_inc, weather_inc = await asyncio.gather(
-        inc_task, flow_task, weather_task,
+    (tomtom_inc, _), flow_inc, weather_inc, tweet_inc = await asyncio.gather(
+        inc_task, flow_task, weather_task, tweet_task,
     )
 
     # ── Detección de reaperturas ───────────────────────────────────
@@ -93,10 +99,14 @@ async def check_viaje(viaje: dict):
         logger.info(f"Reaperturas notificadas a chat {chat_id}: {len(reabiertos)}")
 
     # ── Alertas nuevas ─────────────────────────────────────────────
-    todos  = tomtom_inc + flow_inc + weather_inc
+    # Normalizar tweets para dedup (usan tweet_hash en vez de hash_incidente)
+    for tw in tweet_inc:
+        tw["_monitor_hash"] = tw.pop("tweet_hash", None)
+
+    todos  = tomtom_inc + flow_inc + weather_inc + tweet_inc
     nuevos = []
     for inc in todos:
-        h = hash_incidente(inc)
+        h = inc.pop("_monitor_hash", None) or hash_incidente(inc)
         if not ya_enviada(chat_id, h):
             nuevos.append((inc, h))
 

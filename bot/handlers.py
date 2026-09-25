@@ -21,6 +21,10 @@ from sources.openmeteo import (
     get_weather_alerts_for_city_route as _city_weather,
     get_weather_alerts_for_regions as _region_weather,
 )
+from sources.nitter_monitor import (
+    get_tweets_for_city_route as _city_tweets,
+    get_tweets_for_regions as _region_tweets,
+)
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import (
@@ -130,15 +134,18 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         inc_task     = _city_incidents(city_path)
         flow_task    = _city_flow(city_path)
         weather_task = _city_weather(city_path)
+        tweet_task   = _city_tweets(city_path)
     else:
         inc_task     = _region_incidents(regiones)
         flow_task    = _region_flow(regiones)
         weather_task = _region_weather(regiones)
+        tweet_task   = _region_tweets(regiones)
 
-    (tomtom_inc, _), flow_inc, weather_inc = await asyncio.gather(
+    (tomtom_inc, _), flow_inc, weather_inc, tweet_inc = await asyncio.gather(
         inc_task,
         flow_task,
         weather_task,
+        tweet_task,
     )
 
     # Sincronizar cierres y detectar reaperturas
@@ -194,6 +201,15 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         lines.append("")
     else:
         lines.append("☀️ Clima favorable en toda la ruta")
+
+    # ── Sección 4: Avisos de X/Twitter ─────────────────────────
+    if tweet_inc:
+        hay_algo = True
+        lines.append("\n🐦 *Avisos viales (@SCT_mx / @CAPUFE_Oficial)*")
+        for inc in tweet_inc[:3]:
+            autor = f" _{inc['autor']}_" if inc.get("autor") else ""
+            lines.append(f"{inc['emoji']} {inc['descripcion']}{autor}")
+        lines.append("")
 
     await bot.send_message(
         chat_id=chat_id,
