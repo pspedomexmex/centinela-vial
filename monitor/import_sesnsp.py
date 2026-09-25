@@ -3,12 +3,15 @@ Importador mensual de datos SESNSP — Robos a transportista de carga en carrete
 Fuente oficial: Secretariado Ejecutivo del SNSP (datos abiertos gratuitos).
 https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva
 
-Ejecutar 1 vez al mes (1° de cada mes via GitHub Actions).
-Descarga el Excel más reciente, filtra "Robo a transportista" y guarda en Supabase.
+Uso:
+  python monitor/import_sesnsp.py                          # descarga automática (requiere SESNSP_URL)
+  python monitor/import_sesnsp.py archivo.zip              # archivo ZIP local
+  python monitor/import_sesnsp.py archivo.xlsx             # archivo Excel local
 """
 import os
 import sys
 import re
+import zipfile
 import logging
 import io
 import requests
@@ -132,6 +135,37 @@ def _descargar_excel(url: str) -> bytes | None:
         return r.content
     except Exception as e:
         logger.error(f"Error descargando Excel: {e}")
+        return None
+
+
+def _leer_archivo_local(ruta: str) -> bytes | None:
+    """Lee un archivo local (ZIP o Excel) y retorna bytes del Excel."""
+    try:
+        with open(ruta, "rb") as f:
+            contenido = f.read()
+        if ruta.lower().endswith(".zip"):
+            logger.info(f"Extrayendo ZIP: {ruta}")
+            contenido = _extraer_excel_de_zip(contenido)
+        return contenido
+    except Exception as e:
+        logger.error(f"Error leyendo archivo local: {e}")
+        return None
+
+
+def _extraer_excel_de_zip(zip_bytes: bytes) -> bytes | None:
+    """Extrae el primer archivo Excel de un ZIP."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            excel_files = [n for n in z.namelist()
+                          if n.lower().endswith((".xlsx", ".xls", ".csv"))]
+            if not excel_files:
+                logger.error("No se encontró Excel dentro del ZIP")
+                return None
+            nombre = excel_files[0]
+            logger.info(f"Extrayendo del ZIP: {nombre}")
+            return z.read(nombre)
+    except Exception as e:
+        logger.error(f"Error extrayendo ZIP: {e}")
         return None
 
 
@@ -263,16 +297,32 @@ def _guardar(registros: list[dict]):
 def main():
     logger.info("=== Importador SESNSP — inicio ===")
 
-    url = _buscar_archivo_sesnsp()
-    if not url:
-        logger.error("No se encontró URL del archivo SESNSP.")
-        logger.error(f"Configura la variable SESNSP_URL en GitHub Actions Secrets")
-        logger.error(f"Descarga manual en: {SESNSP_PAGE}")
-        logger.error("Busca el archivo 'IDSC_Municipal_[mes][año].xlsx' y agrega la URL como secret.")
-        sys.exit(1)
+    contenido = None
 
-    contenido = _descargar_excel(url)
+    # Modo 1: archivo local pasado como argumento
+    if len(sys.argv) > 1:
+        ruta = sys.argv[1]
+        logger.info(f"Modo archivo local: {ruta}")
+        contenido = _leer_archivo_local(ruta)
+
+    # Modo 2: descarga automática via URL
     if not contenido:
+        url = _buscar_archivo_sesnsp()
+        if url:
+            contenido = _descargar_excel(url)
+            # Si la URL devuelve un ZIP, extraer el Excel
+            if contenido and not contenido[:4] in (b"PK\x03\x04",):
+                pass  # es Excel directo
+            elif contenido and contenido[:2] == b"PK":
+                logger.info("Detectado ZIP en descarga, extrayendo...")
+                contenido = _extraer_excel_de_zip(contenido)
+
+    if not contenido:
+        logger.error("No se pudo obtener el archivo SESNSP.")
+        logger.error("Opciones:")
+        logger.error("  1. Descarga el ZIP de https://www.gob.mx/sesnsp y ejecuta:")
+        logger.error("     python monitor/import_sesnsp.py /ruta/al/RNID-Delitos_Municipal-2026.zip")
+        logger.error("  2. Configura SESNSP_URL en GitHub Secrets con la URL directa del Excel.")
         sys.exit(1)
 
     registros = _procesar_excel(contenido)
