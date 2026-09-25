@@ -28,6 +28,7 @@ from sources.nitter_monitor import (
 )
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.escaneo_carreteras import escaneo_nacional
+from sources.escaneo_zmvm import escaneo_zmvm_norte, MUNICIPIOS_ORDEN
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import (
     guardar_viaje, get_viaje, detener_viaje,
@@ -48,6 +49,7 @@ async def cmd_start(bot: Bot, chat_id: int):
             "• `/viaje ORIGEN - DESTINO` — Iniciar monitoreo\n"
             "  Ej: `/viaje CDMX - Monterrey`\n\n"
             "• `/escaneo` — Panorama vial nacional (27 tramos)\n"
+            "• `/zona` — Carreteras ZMVM Norte (Ecatepec, Coacalco, Tecámac, Tlalnepantla, Tultitlán, Cuautitlán Izcalli)\n"
             "• `/alertas` — Incidentes en tu ruta ahora\n"
             "• `/ruta` — Desglose de tramos, km y tiempo\n"
             "• `/trafico` — Estado del tráfico\n"
@@ -504,6 +506,82 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
 
     if not con_problemas and libres:
         lines.append(f"\n✅ _Sin incidentes en los {len(libres)} tramos monitoreados_")
+
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        text="\n".join(lines),
+    )
+
+
+async def cmd_zona(bot: Bot, chat_id: int):
+    await bot.send_message(chat_id=chat_id, text="📡 Escaneando ZMVM Norte...")
+
+    try:
+        por_mun = await escaneo_zmvm_norte()
+    except Exception as e:
+        await bot.send_message(chat_id=chat_id, text=f"❌ Error en escaneo ZMVM: {e}")
+        return
+
+    if not por_mun:
+        await bot.send_message(chat_id=chat_id, text="⚠️ Sin datos disponibles (verifica TOMTOM_KEY).")
+        return
+
+    from datetime import datetime, timezone, timedelta
+    hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%H:%M")
+
+    _EMOJI_FLUJO = {"MUY_LENTO": "🔴", "LENTO": "🟠", "MODERADO": "🟡", "NORMAL": "🟢", "sin_datos": "⚫"}
+    _EMOJI_MUN   = {
+        "Ecatepec":           "🏙",
+        "Coacalco":           "🏙",
+        "Tecámac":            "🏙",
+        "Tlalnepantla":       "🏙",
+        "Tultitlán":          "🏙",
+        "Cuautitlán Izcalli": "🏙",
+    }
+
+    lines = [f"📡 *Zona Norte ZMVM* · {hora_mx} h\n"]
+
+    for mun in MUNICIPIOS_ORDEN:
+        tramos = por_mun.get(mun, [])
+        if not tramos:
+            continue
+
+        con_problemas = [t for t in tramos if t["sev"] > 0]
+        todos_normales = all(t["nivel"] == "NORMAL" for t in tramos)
+        todos_sin_datos = all(t["nivel"] == "sin_datos" for t in tramos)
+
+        if todos_normales:
+            lines.append(f"🟢 *{mun}* — flujo normal")
+            continue
+        if todos_sin_datos:
+            lines.append(f"⚫ *{mun}* — sin cobertura TomTom")
+            continue
+
+        lines.append(f"\n{_EMOJI_MUN[mun]} *{mun}*")
+        for t in tramos:
+            nivel  = t["nivel"]
+            icono  = _EMOJI_FLUJO[nivel]
+            hw_txt = f" `{t['hw']}`" if t["hw"] and t["hw"] != "ARCO" else ""
+            vel_txt = ""
+            if t["velocidad"] and t["ratio"] is not None:
+                pct = int((1 - t["ratio"]) * 100)
+                vel_txt = f" · {t['velocidad']} km/h" + (f" (−{pct}%)" if pct > 2 else "")
+            lines.append(f"{icono} *{t['nombre']}*{hw_txt}{vel_txt}")
+            for inc in t["incidentes"]:
+                desc   = inc["desc"] if isinstance(inc, dict) else inc
+                coords = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
+                if coords[0] and coords[1]:
+                    mapa = f"[📍 ver ubicación](https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f})"
+                    lines.append(f"   {desc} · {mapa}")
+                else:
+                    lines.append(f"   {desc}")
+
+    if all(
+        all(t["nivel"] == "NORMAL" for t in tramos)
+        for tramos in por_mun.values() if tramos
+    ):
+        lines.append("\n✅ _Sin incidentes en todos los municipios_")
 
     await bot.send_message(
         chat_id=chat_id,
