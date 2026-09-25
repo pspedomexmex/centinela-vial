@@ -202,6 +202,25 @@ def _fmt_hora(iso: str | None) -> str | None:
         return None
 
 
+def _extract_coords(inc: dict) -> tuple[float, float] | None:
+    """Extrae (lat, lon) del punto medio de la geometría del incidente."""
+    geom = inc.get("geometry", {})
+    gtype = geom.get("type")
+    try:
+        if gtype == "Point":
+            lon, lat = geom["coordinates"][:2]
+            return (round(lat, 5), round(lon, 5))
+        elif gtype == "LineString":
+            pts = geom.get("coordinates", [])
+            if pts:
+                mid = pts[len(pts) // 2]
+                lon, lat = mid[:2]
+                return (round(lat, 5), round(lon, 5))
+    except Exception:
+        pass
+    return None
+
+
 def _to_alerta(inc: dict) -> dict:
     p = inc.get("properties", {})
     cat = p.get("iconCategory", 0)
@@ -225,6 +244,7 @@ def _to_alerta(inc: dict) -> dict:
         "hora": hora,
         "severidad": delay,
         "fuente": "TomTom",
+        "coords": _extract_coords(inc),
     }
 
 

@@ -142,6 +142,9 @@ async def cmd_alertas(bot: Bot, chat_id: int):
             hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
             lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}")
             lines.append(f"_{inc['descripcion']}_")
+            if inc.get("coords"):
+                lat, lon = inc["coords"]
+                lines.append(f"📍 [Ver en mapa](https://maps.google.com/?q={lat},{lon})")
             lines.append("")
     else:
         lines.append("✅ Sin incidentes en carretera\n")
