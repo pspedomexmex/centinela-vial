@@ -23,7 +23,10 @@ from sources.openmeteo import (
 )
 from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
-from db.supabase_client import guardar_viaje, get_viaje, detener_viaje
+from db.supabase_client import (
+    guardar_viaje, get_viaje, detener_viaje,
+    actualizar_cierres, limpiar_cierres_viaje,
+)
 
 logger = logging.getLogger(__name__)
 GMAPS_KEY = os.environ.get("GMAPS_KEY", "")
@@ -138,9 +141,24 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         weather_task,
     )
 
+    # Sincronizar cierres y detectar reaperturas
+    cierres_actuales = {
+        inc["cierre_hash"]: inc["descripcion"]
+        for inc in tomtom_inc
+        if inc.get("cierre_hash")
+    }
+    reabiertos = actualizar_cierres(chat_id, cierres_actuales)
+
     header = f"📡 *{viaje['origen']} → {viaje['destino']}*\n"
     lines  = [header]
     hay_algo = False
+
+    if reabiertos:
+        hay_algo = True
+        lines.append("✅ *Carreteras reabiertas*")
+        for desc in reabiertos:
+            lines.append(f"✅ _{desc}_")
+        lines.append("")
 
     # ── Sección 1: Incidentes críticos ─────────────────────────
     if tomtom_inc:
@@ -269,6 +287,7 @@ async def cmd_detener(bot: Bot, chat_id: int):
         return
 
     detener_viaje(chat_id)
+    limpiar_cierres_viaje(chat_id)
     await bot.send_message(
         chat_id=chat_id,
         parse_mode=ParseMode.MARKDOWN,

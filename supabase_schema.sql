@@ -27,5 +27,22 @@ CREATE TABLE IF NOT EXISTS alertas_enviadas (
   UNIQUE(chat_id, hash_alerta)
 );
 
+CREATE TABLE IF NOT EXISTS cierres_activos (
+  id           SERIAL PRIMARY KEY,
+  chat_id      BIGINT NOT NULL,
+  hash_cierre  TEXT NOT NULL,
+  descripcion  TEXT NOT NULL,
+  detectado_en TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(chat_id, hash_cierre)
+);
+
+-- Migración para bases existentes:
+-- CREATE TABLE IF NOT EXISTS cierres_activos (
+--   id SERIAL PRIMARY KEY, chat_id BIGINT NOT NULL, hash_cierre TEXT NOT NULL,
+--   descripcion TEXT NOT NULL, detectado_en TIMESTAMPTZ DEFAULT NOW(),
+--   UNIQUE(chat_id, hash_cierre)
+-- );
+
 CREATE INDEX IF NOT EXISTS idx_viajes_activos ON viajes(activo) WHERE activo = TRUE;
 CREATE INDEX IF NOT EXISTS idx_alertas ON alertas_enviadas(chat_id, hash_alerta);
+CREATE INDEX IF NOT EXISTS idx_cierres ON cierres_activos(chat_id);

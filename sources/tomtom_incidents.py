@@ -4,6 +4,7 @@ Reemplaza la integración de Waze (bloqueada).
 Requiere TOMTOM_KEY en variables de entorno.
 """
 import os
+import hashlib
 import httpx
 import asyncio
 from datetime import datetime, timezone, timedelta
@@ -202,6 +203,15 @@ def _fmt_hora(iso: str | None) -> str | None:
         return None
 
 
+def _cierre_hash(p: dict) -> str:
+    """Hash estable para un cierre: no cambia si varía la hora o la ciudad añadida."""
+    roads = ",".join(sorted(p.get("roadNumbers") or []))
+    desde = (p.get("from") or "")[:40].lower().strip()
+    hasta = (p.get("to") or "")[:40].lower().strip()
+    key = roads + "|" + "|".join(sorted([desde, hasta]))
+    return hashlib.md5(key.encode()).hexdigest()[:12]
+
+
 def _extract_coords(inc: dict) -> tuple[float, float] | None:
     """Extrae (lat, lon) del punto medio de la geometría del incidente."""
     geom = inc.get("geometry", {})
@@ -245,6 +255,7 @@ def _to_alerta(inc: dict) -> dict:
         "severidad": delay,
         "fuente": "TomTom",
         "coords": _extract_coords(inc),
+        "cierre_hash": _cierre_hash(p) if cat == 8 else None,
     }
 
 

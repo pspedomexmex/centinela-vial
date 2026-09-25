@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.supabase_client import (
     get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas,
+    actualizar_cierres,
 )
 from sources.tomtom_incidents import (
     get_incidents_for_city_route as _city_incidents,
@@ -77,6 +78,21 @@ async def check_viaje(viaje: dict):
         inc_task, flow_task, weather_task,
     )
 
+    # ── Detección de reaperturas ───────────────────────────────────
+    cierres_actuales = {
+        inc["cierre_hash"]: inc["descripcion"]
+        for inc in tomtom_inc
+        if inc.get("cierre_hash")
+    }
+    reabiertos = actualizar_cierres(chat_id, cierres_actuales)
+    if reabiertos:
+        lines_r = [f"✅ *Carretera reabierta* — {viaje['origen']} → {viaje['destino']}\n"]
+        for desc in reabiertos:
+            lines_r.append(f"✅ _{desc}_")
+        send_message(chat_id, "\n".join(lines_r))
+        logger.info(f"Reaperturas notificadas a chat {chat_id}: {len(reabiertos)}")
+
+    # ── Alertas nuevas ─────────────────────────────────────────────
     todos  = tomtom_inc + flow_inc + weather_inc
     nuevos = []
     for inc in todos:
@@ -92,6 +108,9 @@ async def check_viaje(viaje: dict):
     for inc, h in nuevos[:8]:
         hora = f" · _{inc['hora']} h_" if inc.get("hora") else ""
         lines.append(f"{inc['emoji']} *{inc['tipo']}*{hora}\n_{inc['descripcion']}_")
+        if inc.get("coords"):
+            lat, lon = inc["coords"]
+            lines.append(f"📍 [Ver en mapa](https://maps.google.com/?q={lat},{lon})")
         if inc.get("autor"):
             lines.append(f"_— {inc['autor']}_")
         lines.append("")

@@ -70,3 +70,50 @@ def marcar_enviada(chat_id: int, hash_alerta: str):
 def limpiar_alertas_viejas(horas: int = 6):
     cutoff = (datetime.utcnow() - timedelta(hours=horas)).isoformat()
     _db().table("alertas_enviadas").delete().lt("enviado_en", cutoff).execute()
+
+
+def get_cierres_activos(chat_id: int) -> dict[str, str]:
+    """Retorna {hash_cierre: descripcion} de los cierres almacenados para este viaje."""
+    res = (
+        _db().table("cierres_activos")
+        .select("hash_cierre, descripcion")
+        .eq("chat_id", chat_id)
+        .execute()
+    )
+    return {r["hash_cierre"]: r["descripcion"] for r in (res.data or [])}
+
+
+def actualizar_cierres(chat_id: int, cierres_actuales: dict[str, str]) -> list[str]:
+    """
+    Sincroniza cierres activos con el estado actual de TomTom.
+    - Nuevos cierres: registra en DB.
+    - Cierres desaparecidos: elimina de DB y retorna sus descripciones.
+    Retorna lista de descripciones de cierres que se reabrieron.
+    """
+    db = _db()
+    previos = get_cierres_activos(chat_id)
+
+    reabiertos_hashes = [h for h in previos if h not in cierres_actuales]
+    reabiertos_desc   = [previos[h] for h in reabiertos_hashes]
+
+    if reabiertos_hashes:
+        db.table("cierres_activos").delete().eq(
+            "chat_id", chat_id
+        ).in_("hash_cierre", reabiertos_hashes).execute()
+
+    nuevos = [
+        {"chat_id": chat_id, "hash_cierre": h, "descripcion": desc}
+        for h, desc in cierres_actuales.items()
+        if h not in previos
+    ]
+    if nuevos:
+        db.table("cierres_activos").upsert(
+            nuevos, on_conflict="chat_id,hash_cierre"
+        ).execute()
+
+    return reabiertos_desc
+
+
+def limpiar_cierres_viaje(chat_id: int):
+    """Elimina todos los cierres activos al detener el viaje."""
+    _db().table("cierres_activos").delete().eq("chat_id", chat_id).execute()
