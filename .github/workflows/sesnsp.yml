@@ -27,4 +27,5 @@ jobs:
         env:
           SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SESNSP_URL:        ${{ secrets.SESNSP_URL }}
         run: python monitor/import_sesnsp.py

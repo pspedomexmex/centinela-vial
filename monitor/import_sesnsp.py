@@ -18,13 +18,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Página de datos abiertos SESNSP
+# URL configurable via variable de entorno SESNSP_URL
+# Si no se configura, el script intenta detectar el archivo en la página oficial.
+# Para configurar: en GitHub Actions → Settings → Secrets → SESNSP_URL
 SESNSP_PAGE = (
     "https://www.gob.mx/sesnsp/acciones-y-programas/"
     "datos-abiertos-de-incidencia-delictiva"
 )
-# Patrón del nombre del archivo Excel municipal
-_FILE_PATTERN = re.compile(r"IDSC_Municipal[^\"'\s]+\.xlsx", re.IGNORECASE)
+# Fallback: URL directa del último Excel conocido (actualizar cada mes si es necesario)
+SESNSP_URL_FALLBACK = os.environ.get("SESNSP_URL", "")
+
+_FILE_PATTERNS = [
+    re.compile(r"IDSC_Municipal[^\"'\s<>]+\.xlsx", re.IGNORECASE),
+    re.compile(r"IDEFC_Municipal[^\"'\s<>]+\.xlsx", re.IGNORECASE),
+    re.compile(r"incidencia.delictiva[^\"'\s<>]+\.xlsx", re.IGNORECASE),
+    re.compile(r"(https?://[^\s\"'<>]+(?:IDSC|IDEFC|incidencia)[^\s\"'<>]*\.xlsx)", re.IGNORECASE),
+]
 
 # Coordenadas centroide por estado para geocodificación
 ESTADO_COORDS: dict[str, tuple[float, float]] = {
@@ -67,28 +76,52 @@ _SUBTIPO_ROBOS = ["transportista", "carga en carretera", "robo a transporte"]
 
 
 def _buscar_archivo_sesnsp() -> str | None:
-    """Extrae la URL del Excel más reciente de la página SESNSP."""
+    """
+    Busca la URL del Excel SESNSP. Orden de prioridad:
+    1. Variable de entorno SESNSP_URL (la más confiable)
+    2. Scraping de la página oficial
+    3. API de datos.gob.mx
+    """
+    # 1. URL explícita via env var
+    if SESNSP_URL_FALLBACK:
+        logger.info(f"Usando URL configurada: {SESNSP_URL_FALLBACK}")
+        return SESNSP_URL_FALLBACK
+
+    # 2. Scraping de la página oficial
     try:
         r = requests.get(SESNSP_PAGE, timeout=15,
-                         headers={"User-Agent": "Mozilla/5.0"})
-        r.raise_for_status()
-        matches = _FILE_PATTERN.findall(r.text)
-        if not matches:
-            # Buscar enlace que contenga 'IDSC' o 'incidencia'
-            urls = re.findall(r'https?://[^\s"\']+(?:IDSC|idsc)[^\s"\']*\.xlsx', r.text)
-            if urls:
-                return urls[0]
-            return None
-        # La página referencia solo el nombre — construir URL cms
-        filename = matches[0]
-        cms_urls = re.findall(
-            rf'https://www\.gob\.mx/cms/uploads/attachment/file/\d+/{re.escape(filename)}',
-            r.text,
-        )
-        return cms_urls[0] if cms_urls else None
+                         headers={"User-Agent": "Mozilla/5.0 (compatible)"})
+        html = r.text
+        # Buscar URL completa directa
+        for pattern in _FILE_PATTERNS:
+            matches = pattern.findall(html)
+            if matches:
+                url = matches[0]
+                if not url.startswith("http"):
+                    url = f"https://www.gob.mx/cms/uploads/attachment/file/000000/{url}"
+                logger.info(f"URL encontrada por scraping: {url}")
+                return url
     except Exception as e:
-        logger.error(f"Error buscando archivo SESNSP: {e}")
-        return None
+        logger.warning(f"Scraping falló: {e}")
+
+    # 3. Buscar en datos.gob.mx (API de datos abiertos del gobierno)
+    try:
+        r = requests.get(
+            "https://datos.gob.mx/busca/api/3/action/package_search",
+            params={"q": "incidencia delictiva SESNSP", "rows": 5},
+            timeout=10,
+        )
+        results = r.json().get("result", {}).get("results", [])
+        for pkg in results:
+            for resource in pkg.get("resources", []):
+                url = resource.get("url", "")
+                if "xlsx" in url.lower() and ("idsc" in url.lower() or "municipal" in url.lower()):
+                    logger.info(f"URL encontrada via datos.gob.mx: {url}")
+                    return url
+    except Exception as e:
+        logger.warning(f"datos.gob.mx falló: {e}")
+
+    return None
 
 
 def _descargar_excel(url: str) -> bytes | None:
@@ -232,8 +265,10 @@ def main():
 
     url = _buscar_archivo_sesnsp()
     if not url:
-        logger.error("No se encontró URL del archivo SESNSP. Verifica manualmente en:")
-        logger.error(SESNSP_PAGE)
+        logger.error("No se encontró URL del archivo SESNSP.")
+        logger.error(f"Configura la variable SESNSP_URL en GitHub Actions Secrets")
+        logger.error(f"Descarga manual en: {SESNSP_PAGE}")
+        logger.error("Busca el archivo 'IDSC_Municipal_[mes][año].xlsx' y agrega la URL como secret.")
         sys.exit(1)
 
     contenido = _descargar_excel(url)
