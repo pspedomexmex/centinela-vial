@@ -27,7 +27,29 @@ from sources.nitter_monitor import (
 )
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-MODEL = "llama-3.1-70b-versatile"
+
+# Modelos con tool calling, en orden de preferencia
+_PREFERRED_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.3-70b-specdec",
+    "llama3-70b-8192",
+    "llama-3.1-8b-instant",
+    "gemma2-9b-it",
+    "mixtral-8x7b-32768",
+]
+
+
+async def _select_model(client: AsyncGroq) -> str:
+    """Elige el mejor modelo disponible en la cuenta Groq."""
+    try:
+        resp = await client.models.list()
+        available = {m.id for m in resp.data}
+        for m in _PREFERRED_MODELS:
+            if m in available:
+                return m
+    except Exception:
+        pass
+    return _PREFERRED_MODELS[0]
 
 _SYSTEM = (
     "Eres Centinela Vial, asistente de logística para transporte de carga en México. "
@@ -168,10 +190,11 @@ async def run_agent(chat_id: int, user_message: str) -> str:
     ]
 
     client = AsyncGroq(api_key=GROQ_API_KEY)
+    model  = await _select_model(client)
 
     for _ in range(3):
         response = await client.chat.completions.create(
-            model=MODEL,
+            model=model,
             messages=messages,
             tools=_TOOLS,
             tool_choice="auto",
@@ -219,7 +242,7 @@ async def run_agent(chat_id: int, user_message: str) -> str:
 
     # Forzar respuesta final sin herramientas tras 3 rondas
     response = await client.chat.completions.create(
-        model=MODEL,
+        model=model,
         messages=messages,
         max_tokens=800,
     )
