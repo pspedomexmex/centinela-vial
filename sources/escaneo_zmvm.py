@@ -38,7 +38,6 @@ TRAMOS_ZMVM: list[tuple[str, str, float, float, str, bool, int]] = [
     ("Tultitlán",          "MEX-57D — Tultitlán",             19.650, -99.162, "MEX-57D",  True,  10),
     ("Cuautitlán Izcalli", "MEX-57D — Cuautitlán Izcalli",    19.658, -99.222, "MEX-57D",  True,  10),
     # ── Circuito Exterior Mexiquense (concesionada, sin num. MEX) ─────────────────
-    ("Ecatepec",           "Circ. Ext. — Ecatepec",           19.635, -99.048, "ARCO",     False,  5),
     ("Coacalco",           "Circ. Ext. — Coacalco",           19.640, -99.088, "ARCO",     False,  5),
     ("Tultitlán",          "Circ. Ext. — Tultitlán",          19.656, -99.148, "ARCO",     False,  5),
     # ── Vialidades urbanas de Ecatepec ────────────────────────────────────────────
