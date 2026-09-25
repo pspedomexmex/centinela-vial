@@ -70,26 +70,31 @@ async def _flow_en_punto(client: httpx.AsyncClient, lat: float, lon: float) -> d
 async def _incidents_en_punto(
     client: httpx.AsyncClient, lat: float, lon: float, highway: str
 ) -> list[str]:
-    """Devuelve lista de descripciones cortas de incidentes críticos en el tramo."""
-    from sources.tomtom_incidents import _fetch_tile, _es_significativo, CATEGORIA
+    """Devuelve lista de descripciones cortas de incidentes críticos en el tramo.
+    Solo reporta incidentes con número de carretera federal (MEX-XX) para evitar
+    cierres de calles urbanas que caen dentro del tile geográfico.
+    """
+    from sources.tomtom_incidents import _fetch_tile, CATEGORIA, CATEGORIAS_CRITICAS, CATEGORIAS_IGNORADAS
     incs = await _fetch_tile(client, lat, lon)
     descripciones = []
     for inc in incs:
-        if not _es_significativo(inc):
+        p   = inc.get("properties", {})
+        cat = p.get("iconCategory", 0)
+        if cat in CATEGORIAS_IGNORADAS or cat not in CATEGORIAS_CRITICAS:
             continue
-        p    = inc.get("properties", {})
         roads = p.get("roadNumbers") or []
-        # Filtrar por carretera del tramo; si TomTom no reporta número, incluir de todos modos
-        if roads and highway and not any(highway in r for r in roads):
+        # Exigir número de carretera federal — descartar cierres de calles urbanas
+        federal = [r for r in roads if "MEX-" in r or r.startswith("MEX")]
+        if not federal:
             continue
-        cat  = p.get("iconCategory", 0)
         emoji, tipo = CATEGORIA.get(cat, ("⚠️", "Incidente"))
+        hw_label = federal[0] if federal else ""
         desde = p.get("from", "")
         hasta = p.get("to", "")
         if desde and hasta:
-            desc = f"{emoji} {tipo}: {desde[:30]} → {hasta[:30]}"
+            desc = f"{emoji} {hw_label} — {tipo}: {desde[:30]} → {hasta[:30]}"
         else:
-            desc = f"{emoji} {tipo} reportado"
+            desc = f"{emoji} {hw_label} — {tipo} reportado"
         descripciones.append(desc)
     return descripciones[:2]  # máx 2 incidentes por tramo
 
@@ -135,7 +140,8 @@ async def escaneo_nacional() -> list[dict]:
         freeflow = float(flow.get("freeFlowSpeed", 0) or 0)
         conf     = float(flow.get("confidence",    0) or 0)
 
-        if freeflow > 0 and conf >= _CONF_MINIMA:
+        # Si freeflow < 30 km/h el punto cayó en calle urbana, no en autopista federal
+        if freeflow >= 30 and conf >= _CONF_MINIMA:
             ratio = current / freeflow
         else:
             ratio = None
@@ -157,8 +163,8 @@ async def escaneo_nacional() -> list[dict]:
             nivel = "NORMAL"
             sev   = 0
 
-        # Incidentes elevan la severidad aunque el flujo sea normal
-        if incidentes:
+        # Solo los incidentes en la carretera exacta del tramo elevan severidad
+        if incidentes and any(tramo["hw"] in inc for inc in incidentes):
             sev = max(sev, 2)
 
         resultados.append({
