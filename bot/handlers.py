@@ -464,7 +464,7 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
     from datetime import datetime, timezone, timedelta
     hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%H:%M")
 
-    _EMOJI = {"MUY_LENTO": "🔴", "LENTO": "🟠", "MODERADO": "🟡", "NORMAL": "🟢", "sin_datos": "⚫"}
+    _EMOJI_FLUJO = {"MUY_LENTO": "🔴", "LENTO": "🟠", "MODERADO": "🟡", "NORMAL": "🟢", "sin_datos": "⚫"}
 
     con_problemas = [r for r in resultados if r["sev"] > 0]
     libres        = [r for r in resultados if r["sev"] == 0 and r["nivel"] == "NORMAL"]
@@ -474,23 +474,27 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
 
     # Tramos con problemas (máx 10 para no exceder límite de Telegram)
     for r in con_problemas[:10]:
-        emoji = _EMOJI[r["nivel"]]
+        # ⚠️ si hay incidente aunque fluya normal; emoji de flujo si hay congestión
+        if r["nivel"] in ("MUY_LENTO", "LENTO", "MODERADO"):
+            icono = _EMOJI_FLUJO[r["nivel"]]
+        else:
+            icono = "⚠️"
         hw_txt = f" `{r['hw']}`" if r["hw"] else ""
         vel_txt = ""
-        if r["velocidad"] and r["libre"] and r["ratio"] is not None:
+        if r["velocidad"] and r["ratio"] is not None:
             pct = int((1 - r["ratio"]) * 100)
-            vel_txt = f" · {r['velocidad']} km/h (−{pct}%)"
-        lines.append(f"{emoji} *{r['nombre']}*{hw_txt}{vel_txt}")
+            vel_txt = f" · {r['velocidad']} km/h" + (f" (−{pct}%)" if pct > 2 else "")
+        lines.append(f"{icono} *{r['nombre']}*{hw_txt}{vel_txt}")
         for inc in r["incidentes"]:
             lines.append(f"   {inc}")
 
-    # Resumen de libres
+    # Resumen de libres — solo conteo
     if libres:
-        names = ", ".join(r["nombre"] for r in libres)
-        lines.append(f"\n🟢 *{len(libres)} tramos libres* — {names}")
+        lines.append(f"\n🟢 *{len(libres)} tramos libres* — flujo normal")
 
+    # Sin datos — nota discreta al fondo
     if sin_datos:
-        lines.append(f"\n⚫ _{len(sin_datos)} tramos sin datos de TomTom_")
+        lines.append(f"⚫ _{len(sin_datos)} tramos sin cobertura TomTom_")
 
     if not con_problemas:
         lines.append("\n✅ *Todas las carreteras fluyen con normalidad*")

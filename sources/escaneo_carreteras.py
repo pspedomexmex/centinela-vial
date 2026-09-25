@@ -89,12 +89,11 @@ async def _incidents_en_punto(
             continue
         emoji, tipo = CATEGORIA.get(cat, ("⚠️", "Incidente"))
         hw_label = federal[0] if federal else ""
-        desde = p.get("from", "")
-        hasta = p.get("to", "")
-        if desde and hasta:
-            desc = f"{emoji} {hw_label} — {tipo}: {desde[:30]} → {hasta[:30]}"
-        else:
-            desc = f"{emoji} {hw_label} — {tipo} reportado"
+        mag = p.get("magnitudeOfDelay", 0) or 0
+        mag_txt = {1: "menor", 2: "moderado", 3: "grave", 4: "crítico"}.get(mag, "")
+        desc = f"{emoji} {tipo} en {hw_label}"
+        if mag_txt:
+            desc += f" ({mag_txt})"
         descripciones.append(desc)
     return descripciones[:2]  # máx 2 incidentes por tramo
 
