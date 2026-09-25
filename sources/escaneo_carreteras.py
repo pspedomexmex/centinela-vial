@@ -74,13 +74,17 @@ async def _incidents_en_punto(
     Retorna lista de dicts con descripción y coordenadas del incidente.
     Solo incidentes en carreteras federales (MEX-XX).
     """
-    from sources.tomtom_incidents import _fetch_tile, CATEGORIA, CATEGORIAS_CRITICAS, CATEGORIAS_IGNORADAS
+    from sources.tomtom_incidents import _fetch_tile, CATEGORIA
+    # Categorías relevantes para escaneo nacional de carga pesada:
+    # 1=Accidente, 3=Condiciones peligrosas, 7=Carril cerrado,
+    # 8=Carretera cerrada, 9=Obras, 11=Inundación
+    _CATS_ESCANEO = {1, 3, 7, 8, 9, 11}
     incs = await _fetch_tile(client, lat, lon)
     resultados = []
     for inc in incs:
         p   = inc.get("properties", {})
         cat = p.get("iconCategory", 0)
-        if cat in CATEGORIAS_IGNORADAS or cat not in CATEGORIAS_CRITICAS:
+        if cat not in _CATS_ESCANEO:
             continue
         roads = p.get("roadNumbers") or []
         federal = [r for r in roads if "MEX-" in r or r.startswith("MEX")]
@@ -170,7 +174,7 @@ async def escaneo_nacional() -> list[dict]:
             sev   = 0
 
         # Solo los incidentes en la carretera exacta del tramo elevan severidad
-        if incidentes and any(tramo["hw"] in inc for inc in incidentes):
+        if incidentes and any(tramo["hw"] in inc.get("desc", "") for inc in incidentes):
             sev = max(sev, 2)
 
         resultados.append({
