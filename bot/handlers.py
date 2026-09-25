@@ -362,3 +362,18 @@ async def cmd_detener(bot: Bot, chat_id: int):
         parse_mode=ParseMode.MARKDOWN,
         text=f"🏁 Viaje *{viaje['origen']} - {viaje['destino']}* detenido. ¡Buen viaje! 🚛",
     )
+
+
+async def cmd_pregunta(bot: Bot, chat_id: int, text: str):
+    from bot.agent import run_agent
+    await bot.send_message(chat_id=chat_id, text="🤔 Consultando...")
+    try:
+        respuesta = await run_agent(chat_id, text)
+        await bot.send_message(
+            chat_id=chat_id,
+            parse_mode=ParseMode.MARKDOWN,
+            text=respuesta,
+        )
+    except Exception as e:
+        logger.error(f"Error en agente IA: {e}")
+        await bot.send_message(chat_id=chat_id, text=f"❌ Error del agente: {e}")
