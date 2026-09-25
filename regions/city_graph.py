@@ -43,6 +43,7 @@ CITY_NODES: dict[str, tuple[float, float]] = {
     "cd_carmen":         (18.65,  -91.82),
     "merida":            (20.97,  -89.62),
     "cancun":            (21.16,  -86.85),
+    "tehuacan":          (18.46,  -97.39),
     "oaxaca":            (17.06,  -96.72),
     "tapachula":         (14.90,  -92.27),
     "tuxtla":            (16.75,  -93.11),
@@ -100,7 +101,8 @@ CITY_LABELS: dict[str, str] = {
     "tampico": "Tampico", "tuxpan": "Tuxpan", "ciudad_valles": "Ciudad Valles",
     "villahermosa": "Villahermosa", "campeche": "Campeche",
     "cd_carmen": "Ciudad del Carmen", "merida": "Mérida",
-    "cancun": "Cancún", "oaxaca": "Oaxaca", "tapachula": "Tapachula",
+    "cancun": "Cancún", "tehuacan": "Tehuacán",
+    "oaxaca": "Oaxaca", "tapachula": "Tapachula",
     "tuxtla": "Tuxtla Gutiérrez",
     "queretaro": "Querétaro", "leon": "León",
     "aguascalientes": "Aguascalientes", "zacatecas": "Zacatecas",
@@ -347,13 +349,19 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "puebla": {
         "cdmx":           "MEX-150D",
         "veracruz":       "MEX-150D",
-        "oaxaca":         "MEX-190",
+        "tehuacan":       "MEX-190",    # MEX-190 Panamericana sureste
+    },
+    "tehuacan": {
+        "puebla":         "MEX-190",
+        "oaxaca":         "MEX-190",    # MEX-190 vía Huajuapan (sierra)
+        "veracruz":       "MEX-150",    # MEX-150 libre vía Orizaba-Córdoba
     },
     "veracruz": {
         "puebla":         "MEX-150D",
         "xalapa":         "MEX-140",
         "tuxpan":         "MEX-180",
         "coatzacoalcos":  "MEX-180D",
+        "tehuacan":       "MEX-150",    # MEX-150 libre vía Córdoba-Orizaba
     },
     "xalapa": {
         "veracruz":       "MEX-140",
@@ -406,7 +414,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     },
     # ── Oaxaca / Chiapas ──────────────────────────────────────────
     "oaxaca": {
-        "puebla":         "MEX-190",
+        "tehuacan":       "MEX-190",
         "coatzacoalcos":  "MEX-185",
         "tapachula":      "MEX-190",
         "tuxtla":         "MEX-190",
@@ -450,8 +458,12 @@ _ALIASES_RAW: dict[str, str] = {
     "atizapan": "cdmx", "coacalco": "cdmx", "texcoco": "cdmx",
     # Puebla
     "puebla": "puebla", "cholula": "puebla", "atlixco": "puebla",
-    "tehuacan": "puebla", "amozoc": "puebla", "huejotzingo": "puebla",
+    "amozoc": "puebla", "huejotzingo": "puebla",
     "san martin texmelucan": "puebla",
+    # Tehuacán
+    "tehuacan": "tehuacan", "tehuacan puebla": "tehuacan",
+    "cd serdan": "tehuacan", "ciudad serdan": "tehuacan",
+    "ajalpan": "tehuacan", "esperanza pue": "tehuacan",
     # Cuernavaca
     "cuernavaca": "cuernavaca", "cuautla": "cuernavaca",
     "jiutepec": "cuernavaca", "temixco": "cuernavaca",
@@ -735,9 +747,10 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "manzanillo":      {"guadalajara": 290, "lazaro_cardenas": 220,
                         "colima": 45},
     "lazaro_cardenas": {"morelia": 340, "manzanillo": 220, "colima": 280},
-    "puebla":          {"cdmx": 130, "veracruz": 250, "oaxaca": 360},
+    "puebla":          {"cdmx": 130, "veracruz": 250, "tehuacan": 120},
+    "tehuacan":        {"puebla": 120, "oaxaca": 240, "veracruz": 250},
     "veracruz":        {"puebla": 250, "xalapa": 110, "tuxpan": 155,
-                        "coatzacoalcos": 300},
+                        "coatzacoalcos": 300, "tehuacan": 250},
     "xalapa":          {"veracruz": 110, "puebla": 300},
     "tampico":         {"ciudad_victoria": 145, "ciudad_valles": 110,
                         "tuxpan": 165, "matamoros": 310},
@@ -750,7 +763,7 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "cd_carmen":       {"villahermosa": 200, "campeche": 190},
     "merida":          {"campeche": 190, "cancun": 320},
     "cancun":          {"merida": 320},
-    "oaxaca":          {"puebla": 360, "coatzacoalcos": 400,
+    "oaxaca":          {"tehuacan": 240, "coatzacoalcos": 400,
                         "tapachula": 590, "tuxtla": 250},
     "tuxtla":          {"oaxaca": 250, "tapachula": 280, "villahermosa": 290},
     "tapachula":       {"tuxtla": 280, "oaxaca": 590},
@@ -783,6 +796,8 @@ _SLOW_EDGES: dict[tuple[str, str], int] = {
     ("ciudad_valles",  "pachuca"):         55,
     ("tuxpan",         "pachuca"):         60,  # MEX-130 Sierra Norte de Puebla
     ("pachuca",        "tuxpan"):          60,
+    ("tehuacan",       "oaxaca"):          65,  # MEX-190 Sierra Madre del Sur
+    ("oaxaca",         "tehuacan"):        65,
 }
 
 
@@ -903,6 +918,7 @@ def city_path_to_regions(city_path: list[str]) -> list[str]:
         "cd_carmen": "peninsula", "merida": "peninsula",
         "cancun": "peninsula", "oaxaca": "golfo",
         "tapachula": "golfo", "tuxtla": "golfo",
+        "puebla": "centro", "tehuacan": "centro",
         "queretaro": "centro_norte", "leon": "centro_norte",
         "aguascalientes": "centro_norte", "zacatecas": "centro_norte",
         "san_luis_potosi": "noreste", "matehuala": "noreste",
