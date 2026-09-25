@@ -141,14 +141,11 @@ def registrar_clima_historico(registros: list[dict]):
         return
     campos = _campos_tiempo()
     filas  = [{**r, **campos} for r in registros]
-    try:
-        _db().table("clima_historico").upsert(
-            filas,
-            on_conflict="ciudad,fecha,hora_del_dia",
-            ignore_duplicates=True,
-        ).execute()
-    except Exception:
-        pass
+    _db().table("clima_historico").upsert(
+        filas,
+        on_conflict="ciudad,fecha,hora_del_dia",
+        ignore_duplicates=True,
+    ).execute()
 
 
 def registrar_flujo_historico(registros: list[dict]):
@@ -157,14 +154,11 @@ def registrar_flujo_historico(registros: list[dict]):
         return
     campos = _campos_tiempo()
     filas  = [{**r, **campos} for r in registros]
-    try:
-        _db().table("flujo_historico").upsert(
-            filas,
-            on_conflict="ciudad,fecha,hora_del_dia",
-            ignore_duplicates=True,
-        ).execute()
-    except Exception:
-        pass
+    _db().table("flujo_historico").upsert(
+        filas,
+        on_conflict="ciudad,fecha,hora_del_dia",
+        ignore_duplicates=True,
+    ).execute()
 
 
 def registrar_incidentes_historico(
@@ -214,11 +208,8 @@ def registrar_incidentes_historico(
             "hash_contenido": h,
         })
 
-    try:
-        _db().table("incidentes_historico").upsert(
-            registros,
-            on_conflict="hash_contenido,fecha",
-            ignore_duplicates=True,
-        ).execute()
-    except Exception:
-        pass
+    _db().table("incidentes_historico").upsert(
+        registros,
+        on_conflict="hash_contenido,fecha",
+        ignore_duplicates=True,
+    ).execute()
