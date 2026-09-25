@@ -27,6 +27,7 @@ from sources.nitter_monitor import (
     get_tweets_for_regions as _region_tweets,
 )
 from sources.capufe_monitor import get_capufe_alerts_for_regions
+from sources.escaneo_carreteras import escaneo_nacional
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import (
     guardar_viaje, get_viaje, detener_viaje,
@@ -46,6 +47,7 @@ async def cmd_start(bot: Bot, chat_id: int):
             "🚛 *Centinela Vial* — Monitor de rutas para transporte de carga\n\n"
             "• `/viaje ORIGEN - DESTINO` — Iniciar monitoreo\n"
             "  Ej: `/viaje CDMX - Monterrey`\n\n"
+            "• `/escaneo` — Panorama vial nacional (27 tramos)\n"
             "• `/alertas` — Incidentes en tu ruta ahora\n"
             "• `/ruta` — Desglose de tramos, km y tiempo\n"
             "• `/trafico` — Estado del tráfico\n"
@@ -443,6 +445,60 @@ async def cmd_detener(bot: Bot, chat_id: int):
         chat_id=chat_id,
         parse_mode=ParseMode.MARKDOWN,
         text=f"🏁 Viaje *{viaje['origen']} - {viaje['destino']}* detenido. ¡Buen viaje! 🚛",
+    )
+
+
+async def cmd_escaneo(bot: Bot, chat_id: int):
+    await bot.send_message(chat_id=chat_id, text="📡 Escaneando carreteras nacionales...")
+
+    try:
+        resultados = await escaneo_nacional()
+    except Exception as e:
+        await bot.send_message(chat_id=chat_id, text=f"❌ Error en escaneo: {e}")
+        return
+
+    if not resultados:
+        await bot.send_message(chat_id=chat_id, text="⚠️ Sin datos disponibles (verifica TOMTOM_KEY).")
+        return
+
+    from datetime import datetime, timezone, timedelta
+    hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%H:%M")
+
+    _EMOJI = {"MUY_LENTO": "🔴", "LENTO": "🟠", "MODERADO": "🟡", "NORMAL": "🟢", "sin_datos": "⚫"}
+
+    con_problemas = [r for r in resultados if r["sev"] > 0]
+    libres        = [r for r in resultados if r["sev"] == 0 and r["nivel"] == "NORMAL"]
+    sin_datos     = [r for r in resultados if r["nivel"] == "sin_datos"]
+
+    lines = [f"📡 *Escaneo vial — México* · {hora_mx} h\n"]
+
+    # Tramos con problemas (máx 10 para no exceder límite de Telegram)
+    for r in con_problemas[:10]:
+        emoji = _EMOJI[r["nivel"]]
+        hw_txt = f" `{r['hw']}`" if r["hw"] else ""
+        vel_txt = ""
+        if r["velocidad"] and r["libre"] and r["ratio"] is not None:
+            pct = int((1 - r["ratio"]) * 100)
+            vel_txt = f" · {r['velocidad']} km/h (−{pct}%)"
+        lines.append(f"{emoji} *{r['nombre']}*{hw_txt}{vel_txt}")
+        for inc in r["incidentes"]:
+            lines.append(f"   {inc}")
+
+    # Resumen de libres
+    if libres:
+        names = ", ".join(r["nombre"] for r in libres)
+        lines.append(f"\n🟢 *{len(libres)} tramos libres* — {names}")
+
+    if sin_datos:
+        lines.append(f"\n⚫ _{len(sin_datos)} tramos sin datos de TomTom_")
+
+    if not con_problemas:
+        lines.append("\n✅ *Todas las carreteras fluyen con normalidad*")
+
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        text="\n".join(lines),
     )
 
 
