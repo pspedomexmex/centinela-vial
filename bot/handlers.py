@@ -137,11 +137,6 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
         dist = f"{resultado['distancia_km']} km" if resultado["distancia_km"] else "N/D"
         dur = f"{resultado['duracion_hrs']} hrs" if resultado["duracion_hrs"] else "N/D"
 
-        fuel = resultado.get("combustible") or {}
-        fuel_txt = ""
-        if fuel:
-            fuel_txt = f"\n⛽ Combustible: *~{fuel['litros']} L* (~${fuel['costo_mxn']:,} MXN)"
-
         city_path = resultado.get("city_path") or []
         path_txt = ""
         if len(city_path) > 2:
@@ -157,8 +152,7 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
                 f"🏁 *{resultado['destino_fmt']}*\n"
                 f"{path_txt}\n"
                 f"📏 Distancia: *{dist}*\n"
-                f"⏱ Tiempo: *{dur}*{flow_note}"
-                f"{fuel_txt}\n\n"
+                f"⏱ Tiempo: *{dur}*{flow_note}\n\n"
                 f"🗺 Regiones monitoreadas:\n{regiones_txt}\n\n"
                 f"📡 Recibirás alertas automáticas cada 30 min.\n"
                 f"Usa /alertas para consultar ahora mismo."
@@ -301,39 +295,29 @@ async def cmd_ruta(bot: Bot, chat_id: int):
         )
         return
 
-    from regions.city_graph import (
-        CITY_LABELS, CITY_EDGES, EDGE_KM, EDGE_TIME_MIN,
-        _edge_fuel_rate, DIESEL_MXN_PER_L,
-    )
+    from regions.city_graph import CITY_LABELS, CITY_EDGES, EDGE_KM, EDGE_TIME_MIN
 
     lines = [f"🛣 *Ruta: {viaje['origen']} → {viaje['destino']}*\n"]
     total_km = 0
     total_min = 0
-    total_l = 0.0
 
     for i in range(len(city_path) - 1):
         a, b = city_path[i], city_path[i + 1]
         label_a = CITY_LABELS.get(a, a.title())
         label_b = CITY_LABELS.get(b, b.title())
-        hw   = CITY_EDGES.get(a, {}).get(b, "")
-        km   = EDGE_KM.get(a, {}).get(b, 0)
-        min_ = EDGE_TIME_MIN.get(a, {}).get(b, 0)
-        l_tramo = km * _edge_fuel_rate(a, b) / 100
+        hw  = CITY_EDGES.get(a, {}).get(b, "")
+        km  = EDGE_KM.get(a, {}).get(b, 0)
+        min_= EDGE_TIME_MIN.get(a, {}).get(b, 0)
         total_km  += km
         total_min += min_
-        total_l   += l_tramo
         hrs_tramo = f"{min_ // 60}h {min_ % 60:02d}m" if min_ >= 60 else f"{min_}min"
         hw_txt = f" `{hw}`" if hw else ""
         lines.append(f"📍 *{label_a}* →{hw_txt} *{label_b}*")
-        lines.append(f"   {km} km · {hrs_tramo} · ⛽ {l_tramo:.0f} L")
+        lines.append(f"   {km} km · {hrs_tramo}")
 
-    hrs_t  = total_min // 60
-    min_t  = total_min % 60
-    costo  = round(total_l * DIESEL_MXN_PER_L)
-    lines.append(
-        f"\n📏 Total: *{total_km} km* · ⏱ *{hrs_t}h {min_t:02d}m*\n"
-        f"⛽ Combustible: *~{total_l:.0f} L* (~${costo:,} MXN)"
-    )
+    hrs_t = total_min // 60
+    min_t = total_min % 60
+    lines.append(f"\n📏 Total: *{total_km} km* · ⏱ *{hrs_t}h {min_t:02d}m*")
 
     await bot.send_message(
         chat_id=chat_id,
@@ -354,27 +338,54 @@ async def cmd_trafico(bot: Bot, chat_id: int):
 
     await bot.send_message(chat_id=chat_id, text="🔍 Consultando tráfico...")
 
-    status = await asyncio.get_event_loop().run_in_executor(
-        None, get_traffic_status, viaje["origen"], viaje["destino"], GMAPS_KEY
-    )
-    if status.get("error"):
-        await bot.send_message(chat_id=chat_id, text=f"❌ {status['error']}")
+    city_path = viaje.get("city_path")
+
+    # Intento con Google Maps si hay key
+    if GMAPS_KEY:
+        status = await asyncio.get_event_loop().run_in_executor(
+            None, get_traffic_status, viaje["origen"], viaje["destino"], GMAPS_KEY
+        )
+        if not status.get("error"):
+            nivel  = status["nivel"]
+            demora = status["demora_min"]
+            emoji  = EMOJI_TRAFICO[nivel]
+            texto  = (
+                f"{emoji} *Tráfico {nivel.upper()}*\n\n"
+                f"📍 {viaje['origen']} - 🏁 {viaje['destino']}\n"
+                f"⏱ Normal: {status['duracion_normal_min']} min\n"
+                f"🚗 Con tráfico: *{status['duracion_trafico_min']} min*"
+            )
+            if demora > 0:
+                texto += f"\n⚠️ Demora: *+{demora} min*"
+            await bot.send_message(chat_id=chat_id, parse_mode=ParseMode.MARKDOWN, text=texto)
+            return
+
+    # Fallback: TomTom Flow sobre las ciudades de la ruta
+    if city_path:
+        flow_alerts = await _city_flow(city_path)
+    else:
+        flow_alerts = await _region_flow(viaje.get("regiones", []))
+
+    if not flow_alerts:
+        await bot.send_message(
+            chat_id=chat_id,
+            parse_mode=ParseMode.MARKDOWN,
+            text=(
+                f"🟢 *Tráfico LIBRE*\n\n"
+                f"📍 {viaje['origen']} - 🏁 {viaje['destino']}\n"
+                f"_Sin congestionamientos detectados en la ruta_"
+            ),
+        )
         return
 
-    nivel = status["nivel"]
-    demora = status["demora_min"]
-    emoji = EMOJI_TRAFICO[nivel]
-
-    texto = (
-        f"{emoji} *Tráfico {nivel.upper()}*\n\n"
-        f"📍 {viaje['origen']} - 🏁 {viaje['destino']}\n"
-        f"⏱ Normal: {status['duracion_normal_min']} min\n"
-        f"🚗 Con tráfico: *{status['duracion_trafico_min']} min*"
+    lines = [f"🚦 *Flujo vial — {viaje['origen']} → {viaje['destino']}*\n"]
+    for a in flow_alerts[:6]:
+        lines.append(f"{a['emoji']} {a['descripcion']}")
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        text="\n".join(lines),
     )
-    if demora > 0:
-        texto += f"\n⚠️ Demora: *+{demora} min*"
-
-    await bot.send_message(chat_id=chat_id, parse_mode=ParseMode.MARKDOWN, text=texto)
 
 
 async def cmd_estado(bot: Bot, chat_id: int):

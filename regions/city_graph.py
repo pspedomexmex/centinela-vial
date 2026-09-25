@@ -851,38 +851,6 @@ def _edge_speed(origin: str, dest: str) -> int:
     return 90 if hw.endswith("D") else 75
 
 
-# Precio de referencia diesel Pemex (MXN/litro) — actualizar según mercado
-DIESEL_MXN_PER_L: float = 26.5
-
-# Consumo en L/100km por tipo de carretera (camión de carga pesada)
-_FUEL_RATES: dict[str, float] = {
-    "autopista": 28.0,   # sufijo D: velocidad constante, eficiente
-    "libre":     32.0,   # carretera federal de 2 carriles
-    "sierra":    38.0,   # tramos de montaña (_SLOW_EDGES)
-}
-
-
-def _edge_fuel_rate(origin: str, dest: str) -> float:
-    """L/100km según tipo de carretera del tramo."""
-    if (origin, dest) in _SLOW_EDGES:
-        return _FUEL_RATES["sierra"]
-    hw = CITY_EDGES.get(origin, {}).get(dest, "")
-    return _FUEL_RATES["autopista"] if hw.endswith("D") else _FUEL_RATES["libre"]
-
-
-def route_fuel(city_path: list[str]) -> dict:
-    """Litros estimados y costo MXN para el city_path completo."""
-    litros = sum(
-        EDGE_KM.get(city_path[i], {}).get(city_path[i + 1], 0)
-        * _edge_fuel_rate(city_path[i], city_path[i + 1]) / 100
-        for i in range(len(city_path) - 1)
-    )
-    return {
-        "litros":    round(litros, 1),
-        "costo_mxn": round(litros * DIESEL_MXN_PER_L),
-    }
-
-
 def _edge_time_rt(origin: str, dest: str, flow_overrides: dict[str, float]) -> int:
     """Tiempo en minutos usando velocidad TomTom Flow si disponible, si no estática."""
     km = EDGE_KM.get(origin, {}).get(dest, 0)

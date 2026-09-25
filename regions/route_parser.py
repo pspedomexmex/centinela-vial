@@ -405,7 +405,7 @@ def _via_city_graph(
     """
     from regions.city_graph import (
         resolve_city, dijkstra_city_path, city_path_to_regions,
-        CITY_LABELS, route_stats, route_stats_realtime, route_fuel,
+        CITY_LABELS, route_stats, route_stats_realtime,
     )
     ok = resolve_city(origen)
     dk = resolve_city(destino)
@@ -417,7 +417,6 @@ def _via_city_graph(
         return None
 
     stats = route_stats_realtime(city_path, flow_overrides) if flow_overrides else route_stats(city_path)
-    fuel  = route_fuel(city_path)
     regiones = city_path_to_regions(city_path)
     return {
         "error": None,
@@ -425,7 +424,6 @@ def _via_city_graph(
         "destino_fmt": CITY_LABELS.get(dk, destino.title()),
         "distancia_km": stats["km"],
         "duracion_hrs": stats["hrs"],
-        "combustible":  fuel,
         "regiones": regiones,
         "city_path": city_path,
         "estados": [],

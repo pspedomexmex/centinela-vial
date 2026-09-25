@@ -7,6 +7,8 @@ from datetime import datetime
 
 def get_traffic_status(origen: str, destino: str, gmaps_key: str) -> dict:
     """Compara duración normal vs con tráfico actual."""
+    if not gmaps_key:
+        return {"error": "no_key"}
     try:
         client = googlemaps.Client(key=gmaps_key)
 
