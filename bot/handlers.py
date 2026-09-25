@@ -16,6 +16,7 @@ from sources.tomtom_incidents import (
 from sources.tomtom_flow import (
     get_flow_alerts_for_city_route as _city_flow,
     get_flow_alerts_for_regions as _region_flow,
+    get_flow_speeds_dict as _get_flow_speeds,
 )
 from sources.openmeteo import (
     get_weather_alerts_for_city_route as _city_weather,
@@ -96,11 +97,36 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
     )
 
     try:
+        # Pasada 1: ruta estática (instantánea)
         resultado = calcular_ruta_y_regiones(origen, destino, GMAPS_KEY)
 
         if resultado.get("error"):
             await bot.send_message(chat_id=chat_id, text=f"❌ {resultado['error']}")
             return
+
+        # Pasada 2: tráfico real con TomTom Flow (si hay city_path)
+        flow_note = ""
+        city_path_inicial = resultado.get("city_path") or []
+        if city_path_inicial:
+            try:
+                flow_speeds = await _get_flow_speeds(city_path_inicial)
+                if flow_speeds:
+                    resultado_rt = calcular_ruta_y_regiones(origen, destino, GMAPS_KEY, flow_overrides=flow_speeds)
+                    if resultado_rt and not resultado_rt.get("error"):
+                        hrs_est  = resultado["duracion_hrs"]
+                        hrs_real = resultado_rt["duracion_hrs"]
+                        diff = round(hrs_real - hrs_est, 1)
+                        if resultado_rt.get("city_path") != city_path_inicial:
+                            flow_note = "\n⚡ _Ruta ajustada por tráfico actual_"
+                        elif diff > 0:
+                            flow_note = f"\n⚡ _Tráfico actual: +{diff} hrs de demora_"
+                        elif diff < 0:
+                            flow_note = f"\n⚡ _Tráfico fluye bien: {diff} hrs menos_"
+                        else:
+                            flow_note = "\n⚡ _Tráfico normal en la ruta_"
+                        resultado = resultado_rt
+            except Exception:
+                pass  # flow falla silenciosamente, no bloqueamos el viaje
 
         guardar_viaje(chat_id, {"origen": origen, "destino": destino, **resultado})
 
@@ -126,7 +152,7 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
                 f"🏁 *{resultado['destino_fmt']}*\n"
                 f"{path_txt}\n"
                 f"📏 Distancia: *{dist}*\n"
-                f"⏱ Tiempo: *{dur}*\n\n"
+                f"⏱ Tiempo: *{dur}*{flow_note}\n\n"
                 f"🗺 Regiones monitoreadas:\n{regiones_txt}\n\n"
                 f"📡 Recibirás alertas automáticas cada 30 min.\n"
                 f"Usa /alertas para consultar ahora mismo."

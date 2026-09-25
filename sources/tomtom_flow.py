@@ -31,6 +31,32 @@ async def _fetch_flow(client: httpx.AsyncClient, lat: float, lon: float) -> dict
         return {}
 
 
+async def get_flow_speeds_dict(city_keys: list[str]) -> dict[str, float]:
+    """
+    Consulta TomTom Flow para las ciudades indicadas.
+    Retorna {city_key: velocidad_actual_kmh} solo donde hay datos confiables.
+    """
+    if not TOMTOM_KEY or not city_keys:
+        return {}
+    from regions.city_graph import CITY_NODES
+    points = [(k, *CITY_NODES[k]) for k in city_keys if k in CITY_NODES]
+    if not points:
+        return {}
+    async with httpx.AsyncClient(timeout=12) as client:
+        results = await asyncio.gather(
+            *[_fetch_flow(client, lat, lon) for _, lat, lon in points]
+        )
+    speeds: dict[str, float] = {}
+    for (key, _, _), flow in zip(points, results):
+        if not flow:
+            continue
+        current = flow.get("currentSpeed", 0) or 0
+        conf    = flow.get("confidence", 0) or 0
+        if current > 0 and conf >= _CONF_MINIMA:
+            speeds[key] = float(current)
+    return speeds
+
+
 async def get_flow_alerts_for_city_route(city_path: list[str]) -> list[dict]:
     """
     Consulta el flujo de tráfico en cada ciudad intermedia del path.

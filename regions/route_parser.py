@@ -395,25 +395,28 @@ def _region_para_punto(lat: float, lng: float) -> str | None:
 # Función principal
 # ------------------------------------------------------------------
 
-def _via_city_graph(origen: str, destino: str) -> dict | None:
+def _via_city_graph(
+    origen: str, destino: str,
+    flow_overrides: dict | None = None,
+) -> dict | None:
     """
     Intenta resolver la ruta via grafo de ciudades-hub.
-    Retorna el dict de resultado si tiene éxito, None si no resuelve alguno.
+    flow_overrides: {city_key: kmh} — si se pasa, Dijkstra usa tráfico real.
     """
     from regions.city_graph import (
         resolve_city, dijkstra_city_path, city_path_to_regions,
-        CITY_LABELS, CITY_NODES, route_stats,
+        CITY_LABELS, route_stats, route_stats_realtime,
     )
     ok = resolve_city(origen)
     dk = resolve_city(destino)
     if not ok or not dk:
         return None
 
-    city_path = dijkstra_city_path(ok, dk, by_time=True)
+    city_path = dijkstra_city_path(ok, dk, by_time=True, flow_overrides=flow_overrides)
     if not city_path:
         return None
 
-    stats = route_stats(city_path)
+    stats = route_stats_realtime(city_path, flow_overrides) if flow_overrides else route_stats(city_path)
     regiones = city_path_to_regions(city_path)
     return {
         "error": None,
@@ -424,12 +427,16 @@ def _via_city_graph(origen: str, destino: str) -> dict | None:
         "regiones": regiones,
         "city_path": city_path,
         "estados": [],
+        "realtime": bool(flow_overrides),
     }
 
 
-def calcular_ruta_y_regiones(origen: str, destino: str, gmaps_key: str) -> dict:
+def calcular_ruta_y_regiones(
+    origen: str, destino: str, gmaps_key: str,
+    flow_overrides: dict | None = None,
+) -> dict:
     # Prioridad 1: grafo de ciudades-hub (preciso, sin API externa)
-    city_result = _via_city_graph(origen, destino)
+    city_result = _via_city_graph(origen, destino, flow_overrides)
     if city_result:
         return city_result
 

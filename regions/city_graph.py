@@ -851,6 +851,16 @@ def _edge_speed(origin: str, dest: str) -> int:
     return 90 if hw.endswith("D") else 75
 
 
+def _edge_time_rt(origin: str, dest: str, flow_overrides: dict[str, float]) -> int:
+    """Tiempo en minutos usando velocidad TomTom Flow si disponible, si no estática."""
+    km = EDGE_KM.get(origin, {}).get(dest, 0)
+    if km == 0:
+        return 999
+    raw = flow_overrides.get(origin)
+    speed = max(20.0, raw) if raw else float(_edge_speed(origin, dest))
+    return max(1, round(km / speed * 60))
+
+
 # Tiempo estimado en minutos por arista, calculado automáticamente.
 EDGE_TIME_MIN: dict[str, dict[str, int]] = {
     origin: {
@@ -874,6 +884,19 @@ def route_stats(city_path: list[str]) -> dict:
     return {"km": km, "min": minutes, "hrs": round(minutes / 60, 1)}
 
 
+def route_stats_realtime(city_path: list[str], flow_overrides: dict[str, float]) -> dict:
+    """Igual que route_stats() pero usa velocidades TomTom Flow donde hay datos."""
+    km = sum(
+        EDGE_KM.get(city_path[i], {}).get(city_path[i + 1], 0)
+        for i in range(len(city_path) - 1)
+    )
+    minutes = sum(
+        _edge_time_rt(city_path[i], city_path[i + 1], flow_overrides)
+        for i in range(len(city_path) - 1)
+    )
+    return {"km": km, "min": minutes, "hrs": round(minutes / 60, 1)}
+
+
 def bfs_city_path(origin: str, dest: str) -> list[str] | None:
     """BFS mínimo sobre CITY_EDGES — solo para tests o paths cortos."""
     if origin == dest:
@@ -892,17 +915,19 @@ def bfs_city_path(origin: str, dest: str) -> list[str] | None:
 
 
 def dijkstra_city_path(
-    origin: str, dest: str, by_time: bool = False
+    origin: str, dest: str, by_time: bool = False,
+    flow_overrides: dict[str, float] | None = None,
 ) -> list[str] | None:
     """
     Dijkstra sobre CITY_EDGES.
-    by_time=False (default): minimiza km — compatible con código existente.
-    by_time=True: minimiza tiempo de viaje (EDGE_TIME_MIN).
-    Aristas sin peso definido reciben penalización 999.
+    by_time=False: minimiza km.
+    by_time=True: minimiza tiempo estático (EDGE_TIME_MIN).
+    flow_overrides: {city_key: kmh} — penaliza aristas con tráfico real;
+        implica by_time=True automáticamente.
     """
     if origin == dest:
         return [origin]
-    weights = EDGE_TIME_MIN if by_time else EDGE_KM
+    use_rt = bool(flow_overrides)
     heap: list[tuple[int, str, list[str]]] = [(0, origin, [origin])]
     visited: set[str] = set()
     while heap:
@@ -914,7 +939,12 @@ def dijkstra_city_path(
             return path
         for neighbor in CITY_EDGES.get(city, {}):
             if neighbor not in visited:
-                w = weights.get(city, {}).get(neighbor, 999)
+                if use_rt:
+                    w = _edge_time_rt(city, neighbor, flow_overrides)
+                elif by_time:
+                    w = EDGE_TIME_MIN.get(city, {}).get(neighbor, 999)
+                else:
+                    w = EDGE_KM.get(city, {}).get(neighbor, 999)
                 heapq.heappush(heap, (cost + w, neighbor, path + [neighbor]))
     return None
 
