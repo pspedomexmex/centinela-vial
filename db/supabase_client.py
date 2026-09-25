@@ -135,6 +135,17 @@ def limpiar_cierres_viaje(chat_id: int):
     _db().table("cierres_activos").delete().eq("chat_id", chat_id).execute()
 
 
+def guardar_robos_sesnsp(registros: list[dict]):
+    """Guarda datos mensuales de robo SESNSP. Dedup por (año, mes, entidad, municipio)."""
+    if not registros:
+        return
+    _db().table("robos_sesnsp").upsert(
+        registros,
+        on_conflict="año,mes,entidad,municipio",
+        ignore_duplicates=True,
+    ).execute()
+
+
 def registrar_clima_historico(registros: list[dict]):
     """Guarda snapshot de clima de las 55 ciudades. Dedup por (ciudad, fecha, hora_del_dia)."""
     if not registros:

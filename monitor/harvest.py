@@ -29,6 +29,7 @@ MEXICO_GRID: list[tuple[float, float]] = [
     for lat in range(15, 32, 2)          # 9 latitudes: 15,17,19,21,23,25,27,29,31
     for lon in range(-117, -86, 2)       # 16 longitudes: -117…-87
 ]
+from sources.robbery_news import get_robbery_news_nacional
 from db.supabase_client import (
     registrar_incidentes_historico,
     registrar_clima_historico,
@@ -276,10 +277,11 @@ async def harvest_grid_nacional() -> list[dict]:
 async def main():
     logger.info("=== Harvest Centinela Vial — inicio ===")
 
-    (clima_recs, flujo_recs), inc_recs, corredor_recs = await asyncio.gather(
+    (clima_recs, flujo_recs), inc_recs, corredor_recs, robos_recs = await asyncio.gather(
         harvest_clima_y_flujo(),
         harvest_grid_nacional(),
         harvest_corredores(),
+        get_robbery_news_nacional(),
     )
 
     if clima_recs:
@@ -290,13 +292,16 @@ async def main():
         registrar_incidentes_historico(inc_recs)
     if corredor_recs:
         registrar_incidentes_historico(corredor_recs)
+    if robos_recs:
+        registrar_incidentes_historico(robos_recs)
 
     logger.info(
         f"=== Harvest completado: "
         f"{len(clima_recs)} clima | "
         f"{len(flujo_recs)} flujo | "
-        f"{len(inc_recs)} incidentes grid nacional | "
-        f"{len(corredor_recs)} incidentes en corredores ==="
+        f"{len(inc_recs)} grid | "
+        f"{len(corredor_recs)} corredores | "
+        f"{len(robos_recs)} robos ==="
     )
 
 

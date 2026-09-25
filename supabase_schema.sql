@@ -133,3 +133,27 @@ CREATE INDEX IF NOT EXISTS idx_flujo_fecha     ON flujo_historico(fecha);
 CREATE INDEX IF NOT EXISTS idx_flujo_ciudad    ON flujo_historico(ciudad);
 CREATE INDEX IF NOT EXISTS idx_flujo_nivel     ON flujo_historico(nivel, fecha);
 CREATE INDEX IF NOT EXISTS idx_flujo_dia_hora  ON flujo_historico(dia_semana, hora_del_dia);
+
+-- ─────────────────────────────────────────────────────────────────
+-- ROBOS SESNSP — estadísticas oficiales mensuales por estado/municipio
+-- Fuente: Secretariado Ejecutivo del SNSP (datos abiertos).
+-- Importación mensual automática el 1° de cada mes.
+-- ─────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS robos_sesnsp (
+  id            BIGSERIAL PRIMARY KEY,
+  importado_en  TIMESTAMPTZ DEFAULT NOW(),
+  año           SMALLINT NOT NULL,
+  mes           SMALLINT NOT NULL,
+  entidad       TEXT NOT NULL,
+  municipio     TEXT DEFAULT '',
+  modalidad     TEXT DEFAULT 'Robo a transportista de carga en carretera',
+  total         INTEGER DEFAULT 0,
+  coords_lat    FLOAT,
+  coords_lon    FLOAT,
+  UNIQUE(año, mes, entidad, municipio)
+);
+
+CREATE INDEX IF NOT EXISTS idx_robos_año_mes  ON robos_sesnsp(año, mes);
+CREATE INDEX IF NOT EXISTS idx_robos_entidad  ON robos_sesnsp(entidad);
+CREATE INDEX IF NOT EXISTS idx_robos_coords   ON robos_sesnsp(coords_lat, coords_lon)
+  WHERE coords_lat IS NOT NULL;
