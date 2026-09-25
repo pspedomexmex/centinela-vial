@@ -12,7 +12,8 @@ def _db():
 
 
 def guardar_viaje(chat_id: int, datos: dict):
-    _db().table("viajes").upsert({
+    db = _db()
+    db.table("viajes").upsert({
         "chat_id": chat_id,
         "origen": datos["origen"],
         "destino": datos["destino"],
@@ -25,6 +26,8 @@ def guardar_viaje(chat_id: int, datos: dict):
         "city_path": datos.get("city_path"),
         "activo": True,
     }, on_conflict="chat_id").execute()
+    # Limpiar cierres del viaje anterior para evitar falsos "reabiertos"
+    db.table("cierres_activos").delete().eq("chat_id", chat_id).execute()
 
 
 def get_viaje(chat_id: int) -> dict | None:
