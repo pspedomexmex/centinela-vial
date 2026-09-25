@@ -91,6 +91,12 @@ CITY_NODES: dict[str, tuple[float, float]] = {
     "la_paz":            (24.14, -110.31),
     "agua_prieta":       (31.33, -109.56),
     "acapulco":          (16.86,  -99.88),
+    # ── Ciudades secundarias (cobertura ampliada) ───────────────────
+    "ensenada":          (31.87, -116.60),
+    "celaya":            (20.52, -100.82),
+    "orizaba":           (18.85,  -97.10),
+    "chetumal":          (18.50,  -88.30),
+    "uruapan":           (19.42, -102.06),
 }
 
 # ── Nombre de display por ciudad-hub ───────────────────────────────────────
@@ -124,6 +130,8 @@ CITY_LABELS: dict[str, str] = {
     "nogales": "Nogales", "mexicali": "Mexicali",
     "tijuana": "Tijuana", "la_paz": "La Paz",
     "agua_prieta": "Agua Prieta", "acapulco": "Acapulco",
+    "ensenada": "Ensenada", "celaya": "Celaya",
+    "orizaba": "Orizaba", "chetumal": "Chetumal", "uruapan": "Uruapan",
 }
 
 # ── Grafo de aristas dirigidas ciudad→ciudad con highway ──────────────────
@@ -142,7 +150,8 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "queretaro": {
         "cdmx":           "MEX-57D",
         "san_luis_potosi":"MEX-57",
-        "leon":           "MEX-45D",   # bifurcación hacia GDL
+        "leon":           "MEX-45D",
+        "celaya":         "MEX-45D",
     },
     "san_luis_potosi": {
         "queretaro":      "MEX-57",
@@ -159,6 +168,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "queretaro":      "MEX-45D",
         "guadalajara":    "MEX-80",
         "aguascalientes": "MEX-45",
+        "celaya":         "MEX-45D",
     },
     # ── Noreste: Monterrey y sus salidas ──────────────────────────
     "monterrey": {
@@ -302,7 +312,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     },
     "tijuana": {
         "mexicali":       "MEX-2",
-        "ensenada":       "MEX-1",
+        "ensenada":       "MEX-1D",
     },
     "la_paz": {
         "los_mochis":     "MEX-1",    # transbordador / MEX-1
@@ -328,7 +338,8 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "toluca":         "MEX-15",
         "guadalajara":    "MEX-15",
         "lazaro_cardenas":"MEX-37",
-        "puebla":         "MEX-15",    # vía Maravatío-Atlacomulco
+        "puebla":         "MEX-15",
+        "uruapan":        "MEX-14",
     },
     "colima": {
         "guadalajara":    "MEX-54",
@@ -344,12 +355,14 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "morelia":        "MEX-37",
         "manzanillo":     "MEX-200",
         "colima":         "MEX-200",
+        "uruapan":        "MEX-37",
     },
     # ── Eje Puebla-Veracruz (MEX-150D) ────────────────────────────
     "puebla": {
         "cdmx":           "MEX-150D",
         "veracruz":       "MEX-150D",
-        "tehuacan":       "MEX-190",    # MEX-190 Panamericana sureste
+        "tehuacan":       "MEX-190",
+        "orizaba":        "MEX-150D",
     },
     "tehuacan": {
         "puebla":         "MEX-190",
@@ -411,6 +424,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     },
     "cancun": {
         "merida":         "MEX-180D",
+        "chetumal":       "MEX-307",
     },
     # ── Oaxaca / Chiapas ──────────────────────────────────────────
     "oaxaca": {
@@ -439,7 +453,28 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     },
     "pachuca": {
         "cdmx":           "MEX-85D",
-        "ciudad_valles":  "MEX-85",   # Pachuca→Tampico va vía Ciudad Valles, sin arista directa
+        "ciudad_valles":  "MEX-85",
+    },
+    # ── Ciudades secundarias ───────────────────────────────────────
+    "ensenada": {
+        "tijuana":        "MEX-1D",
+    },
+    "celaya": {
+        "queretaro":      "MEX-45D",
+        "leon":           "MEX-45D",
+        "aguascalientes": "MEX-45D",
+    },
+    "orizaba": {
+        "puebla":         "MEX-150D",
+        "veracruz":       "MEX-150D",
+    },
+    "chetumal": {
+        "cancun":         "MEX-307",
+        "campeche":       "MEX-186",
+    },
+    "uruapan": {
+        "morelia":        "MEX-14",
+        "lazaro_cardenas":"MEX-37",
     },
 }
 
@@ -506,7 +541,7 @@ _ALIASES_RAW: dict[str, str] = {
     "ticul": "merida",
     # Cancún
     "cancun": "cancun", "playa del carmen": "cancun",
-    "tulum": "cancun", "cozumel": "cancun", "chetumal": "cancun",
+    "tulum": "cancun", "cozumel": "cancun", "chetumal": "chetumal",
     "bacalar": "cancun", "valladolid": "cancun",
     # Oaxaca
     "oaxaca": "oaxaca", "salina cruz": "oaxaca", "huatulco": "oaxaca",
@@ -522,9 +557,9 @@ _ALIASES_RAW: dict[str, str] = {
     "queretaro": "queretaro", "qro": "queretaro",
     "san juan del rio": "queretaro", "tequisquiapan": "queretaro",
     # León
-    "leon": "leon", "irapuato": "leon", "salamanca": "leon",
-    "silao": "leon", "celaya": "leon", "guanajuato": "leon",
-    "acambaro": "leon", "cortazar": "leon",
+    "leon": "leon", "irapuato": "celaya", "salamanca": "celaya",
+    "silao": "leon", "celaya": "celaya", "guanajuato": "leon",
+    "acambaro": "celaya", "cortazar": "celaya",
     # Aguascalientes
     "aguascalientes": "aguascalientes", "ags": "aguascalientes",
     "rincon de romos": "aguascalientes",
@@ -550,7 +585,7 @@ _ALIASES_RAW: dict[str, str] = {
     "colima": "colima", "villa de alvarez": "colima",
     "tecoman": "colima",
     # Morelia
-    "morelia": "morelia", "uruapan": "morelia",
+    "morelia": "morelia", "uruapan": "uruapan",
     "zamora": "morelia", "la piedad": "morelia",
     "patzcuaro": "morelia", "zitacuaro": "morelia",
     "maravatio": "morelia", "apatzingan": "morelia",
@@ -634,7 +669,7 @@ _ALIASES_RAW: dict[str, str] = {
     "mexicali": "mexicali", "san felipe": "mexicali",
     # Tijuana
     "tijuana": "tijuana", "rosarito": "tijuana",
-    "tecate": "tijuana", "ensenada": "tijuana",
+    "tecate": "tijuana", "ensenada": "ensenada",
     # La Paz
     "la paz": "la_paz", "cabo san lucas": "la_paz",
     "los cabos": "la_paz", "loreto bcs": "la_paz",
@@ -692,11 +727,11 @@ def resolve_city(name: str) -> str | None:
 EDGE_KM: dict[str, dict[str, int]] = {
     "cdmx":            {"queretaro": 220, "toluca": 65, "puebla": 130,
                         "cuernavaca": 85, "pachuca": 90},
-    "queretaro":       {"cdmx": 220, "san_luis_potosi": 190, "leon": 150},
+    "queretaro":       {"cdmx": 220, "san_luis_potosi": 190, "leon": 150, "celaya": 90},
     "san_luis_potosi": {"queretaro": 190, "matehuala": 190, "zacatecas": 190,
                         "ciudad_valles": 200},
     "matehuala":       {"san_luis_potosi": 190, "monterrey": 210},
-    "leon":            {"queretaro": 150, "guadalajara": 175, "aguascalientes": 120},
+    "leon":            {"queretaro": 150, "guadalajara": 175, "aguascalientes": 120, "celaya": 100},
     "monterrey":       {"matehuala": 210, "saltillo": 90, "nuevo_laredo": 230,
                         "reynosa": 210, "matamoros": 260,
                         "linares": 137, "monclova": 200},
@@ -734,20 +769,20 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "los_mochis":      {"culiacan": 210, "hermosillo": 490, "la_paz": 600},
     "mazatlan":        {"culiacan": 230, "tepic": 310, "durango": 310},
     "mexicali":        {"tijuana": 190, "hermosillo": 720},
-    "tijuana":         {"mexicali": 190},
+    "tijuana":         {"mexicali": 190, "ensenada": 108},
     "la_paz":          {"los_mochis": 600},
     "toluca":          {"cdmx": 65, "morelia": 230},
     "guadalajara":     {"leon": 175, "aguascalientes": 220, "tepic": 230,
                         "morelia": 310, "colima": 190, "manzanillo": 290},
     "tepic":           {"guadalajara": 230, "mazatlan": 310},
     "morelia":         {"toluca": 230, "guadalajara": 310, "lazaro_cardenas": 340,
-                        "puebla": 390},
+                        "puebla": 390, "uruapan": 120},
     "colima":          {"guadalajara": 190, "manzanillo": 45,
                         "lazaro_cardenas": 280},
     "manzanillo":      {"guadalajara": 290, "lazaro_cardenas": 220,
                         "colima": 45},
-    "lazaro_cardenas": {"morelia": 340, "manzanillo": 220, "colima": 280},
-    "puebla":          {"cdmx": 130, "veracruz": 250, "tehuacan": 120},
+    "lazaro_cardenas": {"morelia": 340, "manzanillo": 220, "colima": 280, "uruapan": 220},
+    "puebla":          {"cdmx": 130, "veracruz": 250, "tehuacan": 120, "orizaba": 125},
     "tehuacan":        {"puebla": 120, "oaxaca": 240, "veracruz": 250},
     "veracruz":        {"puebla": 250, "xalapa": 110, "tuxpan": 155,
                         "coatzacoalcos": 300, "tehuacan": 250},
@@ -762,7 +797,7 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "campeche":        {"villahermosa": 440, "merida": 190, "cd_carmen": 190},
     "cd_carmen":       {"villahermosa": 200, "campeche": 190},
     "merida":          {"campeche": 190, "cancun": 320},
-    "cancun":          {"merida": 320},
+    "cancun":          {"merida": 320, "chetumal": 320},
     "oaxaca":          {"tehuacan": 240, "coatzacoalcos": 400,
                         "tapachula": 590, "tuxtla": 250},
     "tuxtla":          {"oaxaca": 250, "tapachula": 280, "villahermosa": 290},
@@ -772,6 +807,12 @@ EDGE_KM: dict[str, dict[str, int]] = {
     # MEX-85 Pachuca→Ciudad Valles pasa por sierra Hidalguense (2 carriles, lento)
     # Se penaliza con +150 km efectivos para que Dijkstra prefiera MEX-57D
     "pachuca":         {"cdmx": 90, "ciudad_valles": 480, "tuxpan": 335},
+    # ── Ciudades secundarias ───────────────────────────────────────
+    "ensenada":        {"tijuana": 108},
+    "celaya":          {"queretaro": 90, "leon": 100, "aguascalientes": 180},
+    "orizaba":         {"puebla": 125, "veracruz": 125},
+    "chetumal":        {"cancun": 320, "campeche": 530},
+    "uruapan":         {"morelia": 120, "lazaro_cardenas": 220},
 }
 
 # ── Velocidades especiales por tramo (km/h para transporte de carga) ──────────
@@ -940,6 +981,11 @@ def city_path_to_regions(city_path: list[str]) -> list[str]:
         "nogales": "noroeste", "mexicali": "noroeste",
         "tijuana": "noroeste", "la_paz": "noroeste",
         "agua_prieta": "noroeste",
+        "ensenada":    "noroeste",
+        "celaya":      "centro_norte",
+        "orizaba":     "golfo",
+        "chetumal":    "peninsula",
+        "uruapan":     "occidente",
     }
     regions = []
     for city in city_path:

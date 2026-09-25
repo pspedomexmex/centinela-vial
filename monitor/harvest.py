@@ -19,8 +19,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from regions.city_graph import CITY_NODES
 from sources.tomtom_incidents import (
-    _fetch_tile, _es_significativo, _to_alerta, REGION_TILES,
+    _fetch_tile, _es_significativo, _to_alerta,
 )
+
+# Grid 2° × 2° sobre México — 144 tiles, cobertura nacional completa
+# Lat 15–31°N, Lon -87 a -117°W
+MEXICO_GRID: list[tuple[float, float]] = [
+    (lat, lon)
+    for lat in range(15, 32, 2)          # 9 latitudes: 15,17,19,21,23,25,27,29,31
+    for lon in range(-117, -86, 2)       # 16 longitudes: -117…-87
+]
 from db.supabase_client import (
     registrar_incidentes_historico,
     registrar_clima_historico,
@@ -232,19 +240,19 @@ async def harvest_corredores() -> list[dict]:
     return incidents
 
 
-async def harvest_incidentes() -> list[dict]:
-    """Incidentes en todos los tiles de todas las regiones (cobertura nacional)."""
+async def harvest_grid_nacional() -> list[dict]:
+    """
+    Escanea México completo con un grid de 144 tiles (2°×2°).
+    Cobertura: desde Tijuana hasta Cancún, Matamoros hasta Tapachula.
+    Sin filtro de carretera — captura todo incidente crítico en el país.
+    """
     if not TOMTOM_KEY:
-        logger.warning("TOMTOM_KEY no configurada — saltando incidentes")
+        logger.warning("TOMTOM_KEY no configurada — saltando grid nacional")
         return []
-
-    all_tiles: list[tuple[float, float]] = []
-    for tiles in REGION_TILES.values():
-        all_tiles.extend(tiles)
 
     async with httpx.AsyncClient(timeout=10) as client:
         tile_results = await asyncio.gather(
-            *[_fetch_tile(client, lat, lon) for lat, lon in all_tiles]
+            *[_fetch_tile(client, lat, lon) for lat, lon in MEXICO_GRID]
         )
 
     seen: set[str] = set()
@@ -261,7 +269,7 @@ async def harvest_incidentes() -> list[dict]:
                 seen.add(h)
                 incidents.append(alerta)
 
-    logger.info(f"Incidentes: {len(incidents)} en toda la red")
+    logger.info(f"Grid nacional: {len(MEXICO_GRID)} tiles → {len(incidents)} incidentes")
     return incidents
 
 
@@ -270,7 +278,7 @@ async def main():
 
     (clima_recs, flujo_recs), inc_recs, corredor_recs = await asyncio.gather(
         harvest_clima_y_flujo(),
-        harvest_incidentes(),
+        harvest_grid_nacional(),
         harvest_corredores(),
     )
 
@@ -287,7 +295,7 @@ async def main():
         f"=== Harvest completado: "
         f"{len(clima_recs)} clima | "
         f"{len(flujo_recs)} flujo | "
-        f"{len(inc_recs)} incidentes generales | "
+        f"{len(inc_recs)} incidentes grid nacional | "
         f"{len(corredor_recs)} incidentes en corredores ==="
     )
 
