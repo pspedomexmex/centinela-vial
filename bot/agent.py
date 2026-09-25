@@ -27,7 +27,7 @@ from sources.nitter_monitor import (
 )
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "llama-3.1-70b-versatile"
 
 _SYSTEM = (
     "Eres Centinela Vial, asistente de logística para transporte de carga en México. "
