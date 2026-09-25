@@ -80,7 +80,7 @@ async def check_viaje(viaje: dict):
         weather_task = _region_weather(regiones)
         tweet_task   = _region_tweets(regiones)
 
-    (tomtom_inc, _), flow_inc, weather_inc, tweet_inc = await asyncio.gather(
+    (tomtom_inc, _), flow_inc, weather_inc, (tweet_inc, _) = await asyncio.gather(
         inc_task, flow_task, weather_task, tweet_task,
     )
 

@@ -111,15 +111,17 @@ async def _fetch_account(
         return None
 
 
-async def _fetch_from_instance(instance: str) -> list[dict]:
-    """Intenta obtener tweets de todas las cuentas en una instancia."""
+async def _fetch_from_instance(instance: str) -> list[dict] | None:
+    """
+    Intenta obtener tweets de todas las cuentas en una instancia.
+    Retorna None si la instancia está caída, lista (vacía o no) si responde.
+    """
     async with httpx.AsyncClient() as client:
         results = await asyncio.gather(
             *[_fetch_account(client, instance, acc) for acc in VIAL_ACCOUNTS]
         )
-    # Si alguna cuenta devolvió None, la instancia probablemente está caída
     if all(r is None for r in results):
-        return []
+        return None  # instancia caída
     tweets = []
     for r in results:
         if r:
@@ -127,14 +129,20 @@ async def _fetch_from_instance(instance: str) -> list[dict]:
     return tweets
 
 
-async def _get_raw_tweets() -> list[dict]:
-    """Prueba instancias Nitter en paralelo y usa la primera que responda."""
+async def _get_raw_tweets() -> tuple[list[dict], bool]:
+    """
+    Prueba instancias Nitter en paralelo y usa la primera que responda.
+    Retorna (tweets, disponible) — disponible=False si todas las instancias fallaron.
+    """
     tasks = [_fetch_from_instance(inst) for inst in NITTER_INSTANCES]
+    any_up = False
     for coro in asyncio.as_completed(tasks):
         result = await coro
-        if result:
-            return result
-    return []
+        if result is not None:
+            any_up = True
+            if result:
+                return result, True
+    return [], any_up
 
 
 def _to_alerta(tweet: dict) -> dict:
@@ -156,10 +164,13 @@ def _to_alerta(tweet: dict) -> dict:
     }
 
 
-async def get_tweets_for_city_route(city_path: list[str]) -> list[dict]:
+async def get_tweets_for_city_route(
+    city_path: list[str],
+) -> tuple[list[dict], bool]:
     """
-    Retorna tweets relevantes para las highways y ciudades del path.
-    Filtra por números de carretera (MEX-57D, MEX-85…) y nombres de ciudad.
+    Retorna (alerts, disponible).
+    disponible=False si todas las instancias Nitter fallaron.
+    Filtra por highways y ciudades del path.
     """
     from regions.city_graph import CITY_EDGES, CITY_LABELS
 
@@ -174,7 +185,7 @@ async def get_tweets_for_city_route(city_path: list[str]) -> list[dict]:
         if label:
             city_labels.append(label)
 
-    raw = await _get_raw_tweets()
+    raw, disponible = await _get_raw_tweets()
     seen: set[str] = set()
     alerts: list[dict] = []
     for tw in raw:
@@ -186,15 +197,16 @@ async def get_tweets_for_city_route(city_path: list[str]) -> list[dict]:
         seen.add(key)
         alerts.append(_to_alerta(tw))
 
-    return alerts[:5]
+    return alerts[:5], disponible
 
 
-async def get_tweets_for_regions(region_keys: list[str]) -> list[dict]:
+async def get_tweets_for_regions(
+    region_keys: list[str],
+) -> tuple[list[dict], bool]:
     """
-    Retorna tweets viales sin filtro de ruta (fallback regional).
-    Filtra solo por palabras clave generales de incidente.
+    Retorna (alerts, disponible) sin filtro de ruta (fallback regional).
     """
-    raw = await _get_raw_tweets()
+    raw, disponible = await _get_raw_tweets()
     seen: set[str] = set()
     alerts: list[dict] = []
     for tw in raw:
@@ -205,4 +217,4 @@ async def get_tweets_for_regions(region_keys: list[str]) -> list[dict]:
             continue
         seen.add(key)
         alerts.append(_to_alerta(tw))
-    return alerts[:5]
+    return alerts[:5], disponible

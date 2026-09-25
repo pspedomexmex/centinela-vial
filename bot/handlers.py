@@ -141,7 +141,7 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         weather_task = _region_weather(regiones)
         tweet_task   = _region_tweets(regiones)
 
-    (tomtom_inc, _), flow_inc, weather_inc, tweet_inc = await asyncio.gather(
+    (tomtom_inc, _), flow_inc, weather_inc, (tweet_inc, nitter_up) = await asyncio.gather(
         inc_task,
         flow_task,
         weather_task,
@@ -210,6 +210,8 @@ async def cmd_alertas(bot: Bot, chat_id: int):
             autor = f" _{inc['autor']}_" if inc.get("autor") else ""
             lines.append(f"{inc['emoji']} {inc['descripcion']}{autor}")
         lines.append("")
+    elif not nitter_up:
+        lines.append("🐦 _X/Twitter no disponible (Nitter caído)_\n")
 
     await bot.send_message(
         chat_id=chat_id,
