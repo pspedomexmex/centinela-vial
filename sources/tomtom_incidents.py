@@ -318,10 +318,12 @@ async def get_incidents_for_route(region_path: list[str]) -> tuple[list[dict], l
 def _dedup_incidents(
     all_tile_results: list[list[dict]],
     allowed_per_tile: list[set[str]] | None = None,
+    city_labels: list[str] | None = None,
 ) -> list[dict]:
     """
     Consolida resultados de varios tiles en una lista deduplicada.
-    Si allowed_per_tile no es None, cada tile filtra solo sus highways permitidas.
+    - allowed_per_tile: highways válidas por tile (None = sin filtro de highway)
+    - city_labels: nombre de ciudad por tile — se añade a cierres sin número MEX
     """
     road_count: dict[str, int] = {}
     seen_desc: set[str] = set()
@@ -331,21 +333,37 @@ def _dedup_incidents(
         tile_allowed = (allowed_per_tile[idx]
                         if allowed_per_tile and idx < len(allowed_per_tile)
                         else None)
+        city_label = (city_labels[idx]
+                      if city_labels and idx < len(city_labels)
+                      else None)
+
         for inc in tile_incs:
             if not _es_significativo(inc):
                 continue
             p = inc.get("properties", {})
             roads = p.get("roadNumbers") or []
             cat = p.get("iconCategory", 0)
-            # Cierres (cat 8) sin número de carretera: pasan por proximidad geográfica del tile.
+            # Cierres (cat 8) sin número MEX: pasan por proximidad geográfica del tile.
             # Resto: filtrar por highway del corredor.
             if tile_allowed and roads and not any(r in tile_allowed for r in roads):
                 continue
             road_key = ",".join(sorted(roads))
             if road_count.get(road_key, 0) >= 2:
                 continue
+
             alerta = _to_alerta(inc)
-            desc_key = alerta["descripcion"][:60]
+
+            if cat == 8 and not roads:
+                # Añadir ciudad para dar contexto geográfico
+                if city_label:
+                    alerta["descripcion"] += f" — cerca de {city_label}"
+                # Deduplicar bidireccional: mismo par de calles sin importar dirección
+                desde = p.get("from", "")[:35]
+                hasta = p.get("to", "")[:35]
+                desc_key = "cierre:" + "|".join(sorted([desde, hasta]))
+            else:
+                desc_key = alerta["descripcion"][:60]
+
             if desc_key in seen_desc:
                 continue
             seen_desc.add(desc_key)
@@ -378,21 +396,22 @@ async def get_incidents_for_city_route(
     if not city_path:
         return [], []
 
-    from regions.city_graph import get_route_segments
+    from regions.city_graph import get_route_segments, CITY_LABELS
 
     segments = get_route_segments(city_path)
     if not segments:
         return [], []
 
-    tiles = [(lat, lon) for _, lat, lon, _ in segments]
+    tiles          = [(lat, lon) for _, lat, lon, _ in segments]
     allowed_per_tile = [hw for _, _, _, hw in segments]
+    city_labels    = [CITY_LABELS.get(city, city.title()) for city, _, _, _ in segments]
 
     async with httpx.AsyncClient(timeout=10) as client:
         results = await asyncio.gather(
             *[_fetch_tile(client, lat, lon) for lat, lon in tiles]
         )
 
-    incidents = _dedup_incidents(list(results), allowed_per_tile)
+    incidents = _dedup_incidents(list(results), allowed_per_tile, city_labels)
     return incidents[:10], []
 
 
