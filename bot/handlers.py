@@ -486,7 +486,13 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
             vel_txt = f" · {r['velocidad']} km/h" + (f" (−{pct}%)" if pct > 2 else "")
         lines.append(f"{icono} *{r['nombre']}*{hw_txt}{vel_txt}")
         for inc in r["incidentes"]:
-            lines.append(f"   {inc}")
+            desc = inc["desc"] if isinstance(inc, dict) else inc
+            coords = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
+            if coords[0] and coords[1]:
+                mapa = f"[📍 ver ubicación](https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f})"
+                lines.append(f"   {desc} · {mapa}")
+            else:
+                lines.append(f"   {desc}")
 
     # Resumen de libres — solo conteo
     if libres:

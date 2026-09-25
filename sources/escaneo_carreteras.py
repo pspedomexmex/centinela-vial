@@ -69,33 +69,40 @@ async def _flow_en_punto(client: httpx.AsyncClient, lat: float, lon: float) -> d
 
 async def _incidents_en_punto(
     client: httpx.AsyncClient, lat: float, lon: float, highway: str
-) -> list[str]:
-    """Devuelve lista de descripciones cortas de incidentes críticos en el tramo.
-    Solo reporta incidentes con número de carretera federal (MEX-XX) para evitar
-    cierres de calles urbanas que caen dentro del tile geográfico.
+) -> list[dict]:
+    """
+    Retorna lista de dicts con descripción y coordenadas del incidente.
+    Solo incidentes en carreteras federales (MEX-XX).
     """
     from sources.tomtom_incidents import _fetch_tile, CATEGORIA, CATEGORIAS_CRITICAS, CATEGORIAS_IGNORADAS
     incs = await _fetch_tile(client, lat, lon)
-    descripciones = []
+    resultados = []
     for inc in incs:
         p   = inc.get("properties", {})
         cat = p.get("iconCategory", 0)
         if cat in CATEGORIAS_IGNORADAS or cat not in CATEGORIAS_CRITICAS:
             continue
         roads = p.get("roadNumbers") or []
-        # Exigir número de carretera federal — descartar cierres de calles urbanas
         federal = [r for r in roads if "MEX-" in r or r.startswith("MEX")]
         if not federal:
             continue
+        # Extraer coordenadas del punto medio de la geometría
+        geom   = inc.get("geometry", {})
+        coords = geom.get("coordinates", [])
+        inc_lat, inc_lon = None, None
+        if coords:
+            mid = coords[len(coords) // 2]   # punto medio del LineString
+            inc_lon, inc_lat = mid[0], mid[1] # GeoJSON: [lon, lat]
+
         emoji, tipo = CATEGORIA.get(cat, ("⚠️", "Incidente"))
         hw_label = federal[0] if federal else ""
-        mag = p.get("magnitudeOfDelay", 0) or 0
+        mag     = p.get("magnitudeOfDelay", 0) or 0
         mag_txt = {1: "menor", 2: "moderado", 3: "grave", 4: "crítico"}.get(mag, "")
-        desc = f"{emoji} {tipo} en {hw_label}"
+        desc    = f"{emoji} {tipo} en {hw_label}"
         if mag_txt:
             desc += f" ({mag_txt})"
-        descripciones.append(desc)
-    return descripciones[:2]  # máx 2 incidentes por tramo
+        resultados.append({"desc": desc, "lat": inc_lat, "lon": inc_lon})
+    return resultados[:2]  # máx 2 incidentes por tramo
 
 
 async def escaneo_nacional() -> list[dict]:
