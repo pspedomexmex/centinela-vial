@@ -123,6 +123,34 @@ def limpiar_cierres_viaje(chat_id: int):
     _db().table("cierres_activos").delete().eq("chat_id", chat_id).execute()
 
 
+def registrar_clima_historico(registros: list[dict]):
+    """Guarda snapshot de clima de las 55 ciudades. Dedup por (ciudad, fecha, hora_del_dia)."""
+    if not registros:
+        return
+    try:
+        _db().table("clima_historico").upsert(
+            registros,
+            on_conflict="ciudad,fecha,hora_del_dia",
+            ignore_duplicates=True,
+        ).execute()
+    except Exception:
+        pass
+
+
+def registrar_flujo_historico(registros: list[dict]):
+    """Guarda snapshot de flujo vial de las 55 ciudades. Dedup por (ciudad, fecha, hora_del_dia)."""
+    if not registros:
+        return
+    try:
+        _db().table("flujo_historico").upsert(
+            registros,
+            on_conflict="ciudad,fecha,hora_del_dia",
+            ignore_duplicates=True,
+        ).execute()
+    except Exception:
+        pass
+
+
 def registrar_incidentes_historico(
     incidentes: list[dict],
     origen: str = "",

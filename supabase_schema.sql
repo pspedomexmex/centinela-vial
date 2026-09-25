@@ -78,3 +78,56 @@ CREATE INDEX IF NOT EXISTS idx_hist_ruta       ON incidentes_historico(origen, d
 CREATE INDEX IF NOT EXISTS idx_hist_dia_hora   ON incidentes_historico(dia_semana, hora_del_dia);
 CREATE INDEX IF NOT EXISTS idx_hist_coords     ON incidentes_historico(coords_lat, coords_lon)
   WHERE coords_lat IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────────
+-- CLIMA HISTÓRICO — snapshot de las 55 ciudades por hora de muestreo
+-- Cubre temperatura, precipitación, viento, visibilidad y código WMO.
+-- UNIQUE (ciudad, fecha, hora_del_dia) → un registro por ciudad por hora.
+-- ─────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clima_historico (
+  id             BIGSERIAL PRIMARY KEY,
+  registrado_en  TIMESTAMPTZ DEFAULT NOW(),
+  fecha          DATE     GENERATED ALWAYS AS (DATE(registrado_en)) STORED,
+  hora_del_dia   SMALLINT GENERATED ALWAYS AS (EXTRACT(HOUR  FROM registrado_en)::SMALLINT) STORED,
+  dia_semana     SMALLINT GENERATED ALWAYS AS (EXTRACT(DOW   FROM registrado_en)::SMALLINT) STORED,
+  ciudad         TEXT NOT NULL,
+  lat            FLOAT,
+  lon            FLOAT,
+  codigo_wmo     SMALLINT,
+  descripcion    TEXT,
+  temperatura    FLOAT,
+  precipitacion  FLOAT,
+  viento_kmh     FLOAT,
+  visibilidad_m  FLOAT,
+  es_severo      BOOLEAN DEFAULT FALSE,
+  UNIQUE(ciudad, fecha, hora_del_dia)
+);
+
+CREATE INDEX IF NOT EXISTS idx_clima_fecha     ON clima_historico(fecha);
+CREATE INDEX IF NOT EXISTS idx_clima_ciudad    ON clima_historico(ciudad);
+CREATE INDEX IF NOT EXISTS idx_clima_severo    ON clima_historico(fecha) WHERE es_severo = TRUE;
+CREATE INDEX IF NOT EXISTS idx_clima_dia_hora  ON clima_historico(dia_semana, hora_del_dia);
+
+-- ─────────────────────────────────────────────────────────────────
+-- FLUJO HISTÓRICO — velocidad actual vs libre en las 55 ciudades
+-- Permite analizar patrones de congestión por hora, día y ciudad.
+-- UNIQUE (ciudad, fecha, hora_del_dia) → un snapshot por ciudad por hora.
+-- ─────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS flujo_historico (
+  id               BIGSERIAL PRIMARY KEY,
+  registrado_en    TIMESTAMPTZ DEFAULT NOW(),
+  fecha            DATE     GENERATED ALWAYS AS (DATE(registrado_en)) STORED,
+  hora_del_dia     SMALLINT GENERATED ALWAYS AS (EXTRACT(HOUR  FROM registrado_en)::SMALLINT) STORED,
+  dia_semana       SMALLINT GENERATED ALWAYS AS (EXTRACT(DOW   FROM registrado_en)::SMALLINT) STORED,
+  ciudad           TEXT NOT NULL,
+  velocidad_actual FLOAT,
+  velocidad_libre  FLOAT,
+  ratio_flujo      FLOAT,
+  nivel            TEXT,   -- NORMAL | LENTO | MUY_LENTO
+  UNIQUE(ciudad, fecha, hora_del_dia)
+);
+
+CREATE INDEX IF NOT EXISTS idx_flujo_fecha     ON flujo_historico(fecha);
+CREATE INDEX IF NOT EXISTS idx_flujo_ciudad    ON flujo_historico(ciudad);
+CREATE INDEX IF NOT EXISTS idx_flujo_nivel     ON flujo_historico(nivel, fecha);
+CREATE INDEX IF NOT EXISTS idx_flujo_dia_hora  ON flujo_historico(dia_semana, hora_del_dia);

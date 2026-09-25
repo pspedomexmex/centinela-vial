@@ -1,0 +1,33 @@
+name: Centinela Vial — Cosecha de Datos (Tesis)
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # 06:00 México (UTC-5 CDT)
+    - cron: '0 19 * * *'   # 14:00 México
+    - cron: '0 3  * * *'   # 22:00 México (siguiente día UTC)
+  workflow_dispatch:        # disparo manual desde GitHub
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Cosechar datos viales
+        env:
+          SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TOMTOM_KEY:        ${{ secrets.TOMTOM_KEY }}
+        run: python monitor/harvest.py
