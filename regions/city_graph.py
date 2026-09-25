@@ -604,14 +604,37 @@ CITY_ALIASES: dict[str, str] = {_norm(k): v for k, v in _ALIASES_RAW.items()}
 def resolve_city(name: str) -> str | None:
     """
     Convierte nombre libre → city_key.
-    1. Lookup directo en CITY_ALIASES (normalizado)
-    2. Substring match: alias contiene la entrada o viceversa
-    Retorna None si no se puede resolver.
+    1. Exacto en CITY_ALIASES
+    2. Prefijo: alias al inicio del input → maneja "ciudad estado"
+       ("matehuala san luis potosi" → matehuala, "linares nl" → linares)
+       Elige el alias más largo para evitar matches cortos ambiguos.
+    3. Sufijo: input al inicio de un alias → maneja nombres parciales
+       ("tepotzotlan" → "tepotzotlan mexico"; elige el más corto)
+    4. Substring general (fallback)
     """
     key = _norm(name)
+    # 1. Exacto
     if key in CITY_ALIASES:
         return CITY_ALIASES[key]
-    # Substring: "tepotzotlan" encuentra "tepotzotlan mexico"
+    # 2. Prefijo: alias seguido de espacio al inicio del input
+    #    "matehuala san luis potosi".startswith("matehuala ") → True
+    prefix_hits = [
+        (alias, city)
+        for alias, city in CITY_ALIASES.items()
+        if key.startswith(alias + " ")
+    ]
+    if prefix_hits:
+        return max(prefix_hits, key=lambda x: len(x[0]))[1]
+    # 3. Sufijo: el input es el inicio de un alias
+    #    "tepotzotlan" → alias "tepotzotlan mexico" empieza con ese texto
+    suffix_hits = [
+        (alias, city)
+        for alias, city in CITY_ALIASES.items()
+        if alias.startswith(key)
+    ]
+    if suffix_hits:
+        return min(suffix_hits, key=lambda x: len(x[0]))[1]
+    # 4. Substring general (fallback original)
     for alias, city in CITY_ALIASES.items():
         if key in alias or alias in key:
             return city
