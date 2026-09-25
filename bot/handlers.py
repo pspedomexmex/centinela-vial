@@ -502,8 +502,8 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
     if sin_datos:
         lines.append(f"⚫ _{len(sin_datos)} tramos sin cobertura TomTom_")
 
-    if not con_problemas:
-        lines.append("\n✅ *Todas las carreteras fluyen con normalidad*")
+    if not con_problemas and libres:
+        lines.append(f"\n✅ _Sin incidentes en los {len(libres)} tramos monitoreados_")
 
     await bot.send_message(
         chat_id=chat_id,
