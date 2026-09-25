@@ -45,6 +45,7 @@ async def cmd_start(bot: Bot, chat_id: int):
             "• `/viaje ORIGEN - DESTINO` — Iniciar monitoreo\n"
             "  Ej: `/viaje CDMX - Monterrey`\n\n"
             "• `/alertas` — Incidentes en tu ruta ahora\n"
+            "• `/ruta` — Desglose de tramos, km y tiempo\n"
             "• `/trafico` — Estado del tráfico\n"
             "• `/estado` — Resumen del viaje activo\n"
             "• `/regiones` — Regiones que cubre tu ruta\n"
@@ -212,6 +213,55 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         lines.append("")
     elif not nitter_up:
         lines.append("📰 _Noticias viales no disponibles_\n")
+
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        text="\n".join(lines),
+    )
+
+
+async def cmd_ruta(bot: Bot, chat_id: int):
+    viaje = get_viaje(chat_id)
+    if not viaje:
+        await bot.send_message(
+            chat_id=chat_id,
+            parse_mode=ParseMode.MARKDOWN,
+            text="❌ Sin viaje activo. Usa `/viaje ORIGEN - DESTINO`",
+        )
+        return
+
+    city_path = viaje.get("city_path")
+    if not city_path or len(city_path) < 2:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="ℹ️ Ruta sin desglose de ciudades disponible.",
+        )
+        return
+
+    from regions.city_graph import CITY_LABELS, CITY_EDGES, EDGE_KM, EDGE_TIME_MIN
+
+    lines = [f"🛣 *Ruta: {viaje['origen']} → {viaje['destino']}*\n"]
+    total_km = 0
+    total_min = 0
+
+    for i in range(len(city_path) - 1):
+        a, b = city_path[i], city_path[i + 1]
+        label_a = CITY_LABELS.get(a, a.title())
+        label_b = CITY_LABELS.get(b, b.title())
+        hw  = CITY_EDGES.get(a, {}).get(b, "")
+        km  = EDGE_KM.get(a, {}).get(b, 0)
+        min_= EDGE_TIME_MIN.get(a, {}).get(b, 0)
+        total_km  += km
+        total_min += min_
+        hrs_tramo = f"{min_ // 60}h {min_ % 60:02d}m" if min_ >= 60 else f"{min_}min"
+        hw_txt = f" `{hw}`" if hw else ""
+        lines.append(f"📍 *{label_a}* →{hw_txt} *{label_b}*")
+        lines.append(f"   {km} km · {hrs_tramo}")
+
+    hrs_t = total_min // 60
+    min_t = total_min % 60
+    lines.append(f"\n📏 Total: *{total_km} km* · ⏱ *{hrs_t}h {min_t:02d}m*")
 
     await bot.send_message(
         chat_id=chat_id,

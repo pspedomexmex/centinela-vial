@@ -11,7 +11,7 @@ from telegram import Bot, Update
 
 from bot.handlers import (
     cmd_start, cmd_viaje, cmd_alertas, cmd_trafico,
-    cmd_estado, cmd_regiones, cmd_detener,
+    cmd_estado, cmd_regiones, cmd_detener, cmd_ruta,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +47,8 @@ async def dispatch(update_data: dict):
         await cmd_estado(bot, chat_id)
     elif cmd == "/regiones":
         await cmd_regiones(bot, chat_id)
+    elif cmd == "/ruta":
+        await cmd_ruta(bot, chat_id)
     elif cmd == "/detener":
         await cmd_detener(bot, chat_id)
 
