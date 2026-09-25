@@ -237,7 +237,7 @@ async def cmd_alertas(bot: Bot, chat_id: int):
             lines.append(f"_{inc['descripcion']}_")
             if inc.get("coords"):
                 lat, lon = inc["coords"]
-                lines.append(f"📍 [Ver en mapa](https://maps.google.com/?q={lat},{lon})")
+                lines.append(f"📍 https://maps.google.com/?q={lat},{lon}")
             lines.append("")
     else:
         lines.append("✅ Sin incidentes en carretera\n")
@@ -491,8 +491,9 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
             desc = inc["desc"] if isinstance(inc, dict) else inc
             coords = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
             if coords[0] and coords[1]:
-                mapa = f"[📍 ver ubicación](https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f})"
-                lines.append(f"   {desc} · {mapa}")
+                url = f"https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}"
+                lines.append(f"   {desc}")
+                lines.append(f"   📍 {url}")
             else:
                 lines.append(f"   {desc}")
 
@@ -572,8 +573,9 @@ async def cmd_zona(bot: Bot, chat_id: int):
                 desc   = inc["desc"] if isinstance(inc, dict) else inc
                 coords = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
                 if coords[0] and coords[1]:
-                    mapa = f"[📍 ver ubicación](https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f})"
-                    lines.append(f"   {desc} · {mapa}")
+                    url = f"https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}"
+                    lines.append(f"   {desc}")
+                    lines.append(f"   📍 {url}")
                 else:
                     lines.append(f"   {desc}")
 
