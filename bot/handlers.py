@@ -563,12 +563,11 @@ async def cmd_zona(bot: Bot, chat_id: int):
         for t in tramos:
             nivel  = t["nivel"]
             icono  = _EMOJI_FLUJO[nivel]
-            hw_txt = f" `{t['hw']}`" if t["hw"] and t["hw"] != "ARCO" else ""
             vel_txt = ""
             if t["velocidad"] and t["ratio"] is not None:
                 pct = int((1 - t["ratio"]) * 100)
                 vel_txt = f" · {t['velocidad']} km/h" + (f" (−{pct}%)" if pct > 2 else "")
-            lines.append(f"{icono} *{t['nombre']}*{hw_txt}{vel_txt}")
+            lines.append(f"{icono} *{t['nombre']}*{vel_txt}")
             for inc in t["incidentes"]:
                 desc      = inc["desc"] if isinstance(inc, dict) else inc
                 direccion = inc.get("direccion") if isinstance(inc, dict) else None

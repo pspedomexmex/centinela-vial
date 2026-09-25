@@ -182,6 +182,21 @@ async def escaneo_zmvm_norte() -> dict[str, list[dict]]:
         else:
             nivel, sev = "NORMAL", 0
 
+        # Deduplicar incidentes en la misma ubicación (TomTom reporta ambos sentidos)
+        seen: set[tuple] = set()
+        dedup: list[dict] = []
+        for inc in incidentes:
+            key = (round(inc.get("lat") or 0, 3), round(inc.get("lon") or 0, 3))
+            if key not in seen:
+                seen.add(key)
+                dedup.append(inc)
+        incidentes = dedup
+
+        # Si el tráfico sigue moviéndose (>15 km/h), "Carretera cerrada" → "Cierre parcial"
+        if current > 15:
+            for inc in incidentes:
+                inc["desc"] = inc["desc"].replace("Carretera cerrada", "Cierre parcial")
+
         if incidentes and any(hw in inc.get("desc", "") for inc in incidentes):
             sev = max(sev, 2)
 
