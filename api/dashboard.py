@@ -240,23 +240,35 @@ function renderFlujo(datos){
   });
 }
 
+// Bounding box de México
+const MX_BOUNDS = [[14.5,-118.5],[32.7,-86.7]];
+
 function renderMapa(puntos){
   if(!map){
-    map = L.map('map').setView([23.0,-102.0],5);
+    map = L.map('map',{zoomSnap:0.5});
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       {attribution:'© Esri © HERE © OpenStreetMap',maxZoom:16}).addTo(map);
   }
+  // Limpiar marcadores anteriores
   map.eachLayer(l=>{if(l instanceof L.CircleMarker)map.removeLayer(l);});
+
   const typeColor={'Carretera cerrada':'#ef4444','Accidente':'#f97316',
     'Condiciones peligrosas':'#eab308','Inundación':'#3b82f6'};
-  puntos.forEach(p=>{
-    if(!p.coords_lat||!p.coords_lon)return;
+
+  const validos = puntos.filter(p=>p.coords_lat&&p.coords_lon&&
+    p.coords_lat>=14&&p.coords_lat<=33&&
+    p.coords_lon>=-119&&p.coords_lon<=-86);
+
+  validos.forEach(p=>{
     const color=typeColor[p.tipo]||'#8b5cf6';
     L.circleMarker([p.coords_lat,p.coords_lon],
       {radius:6,fillColor:color,color:'#fff',weight:1,fillOpacity:.85})
       .bindPopup(`<b>${p.tipo||'Incidente'}</b><br>${p.carretera||''}<br><small>${p.descripcion||''}</small>`)
       .addTo(map);
   });
+
+  // Siempre mostrar México completo
+  map.fitBounds(MX_BOUNDS,{padding:[10,10]});
 }
 
 function renderTabla(datos){
