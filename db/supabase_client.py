@@ -192,11 +192,18 @@ def registrar_incidentes_historico(
         if inc.get("coords"):
             coords_lat, coords_lon = inc["coords"]
 
+        # Corredor: origen/destino/carretera pueden venir por incidente
+        # (harvest de corredores) o por parámetro (monitor de viajes).
+        inc_origen    = inc.get("_origen")    or origen
+        inc_destino   = inc.get("_destino")   or destino
+        inc_carretera = inc.get("_carretera")
+
         registros.append({
             **_campos_tiempo(),
-            "origen":         origen,
-            "destino":        destino,
+            "origen":         inc_origen,
+            "destino":        inc_destino,
             "city_path":      city_path,
+            "carretera":      inc_carretera,
             "tipo":           tipo,
             "descripcion":    desc,
             "severidad":      int(inc.get("severidad", 0)),

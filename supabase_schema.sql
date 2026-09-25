@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS incidentes_historico (
   hora_incidente TEXT,
   coords_lat     FLOAT,
   coords_lon     FLOAT,
+  carretera      TEXT,
   hash_contenido TEXT NOT NULL,
   UNIQUE(hash_contenido, fecha)
 );
@@ -75,6 +76,7 @@ CREATE TABLE IF NOT EXISTS incidentes_historico (
 CREATE INDEX IF NOT EXISTS idx_hist_fecha      ON incidentes_historico(fecha);
 CREATE INDEX IF NOT EXISTS idx_hist_tipo       ON incidentes_historico(tipo);
 CREATE INDEX IF NOT EXISTS idx_hist_ruta       ON incidentes_historico(origen, destino);
+CREATE INDEX IF NOT EXISTS idx_hist_carretera  ON incidentes_historico(carretera);
 CREATE INDEX IF NOT EXISTS idx_hist_dia_hora   ON incidentes_historico(dia_semana, hora_del_dia);
 CREATE INDEX IF NOT EXISTS idx_hist_coords     ON incidentes_historico(coords_lat, coords_lon)
   WHERE coords_lat IS NOT NULL;

@@ -160,6 +160,78 @@ async def harvest_clima_y_flujo() -> tuple[list[dict], list[dict]]:
     return clima_recs, flujo_recs
 
 
+async def harvest_corredores() -> list[dict]:
+    """
+    Escanea el punto medio de cada arista del grafo.
+    Filtra por la carretera exacta del tramo → datos precisos por corredor.
+    Etiqueta cada incidente con _origen, _destino y _carretera para la BD.
+    """
+    if not TOMTOM_KEY:
+        return []
+
+    from regions.city_graph import CITY_EDGES, CITY_NODES
+
+    # Aristas únicas (el grafo es bidireccional — evitar duplicados)
+    vistos: set[frozenset] = set()
+    tramos: list[dict] = []
+
+    for city_a, vecinos in CITY_EDGES.items():
+        for city_b, highway in vecinos.items():
+            key = frozenset([city_a, city_b])
+            if key in vistos:
+                continue
+            vistos.add(key)
+
+            coords_a = CITY_NODES.get(city_a)
+            coords_b = CITY_NODES.get(city_b)
+            if not coords_a or not coords_b:
+                continue
+
+            tramos.append({
+                "city_a":  city_a,
+                "city_b":  city_b,
+                "highway": highway,
+                "lat":     (coords_a[0] + coords_b[0]) / 2,
+                "lon":     (coords_a[1] + coords_b[1]) / 2,
+            })
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        tile_results = await asyncio.gather(
+            *[_fetch_tile(client, t["lat"], t["lon"]) for t in tramos]
+        )
+
+    seen: set[str] = set()
+    incidents: list[dict] = []
+
+    for tramo, tile_incs in zip(tramos, tile_results):
+        allowed = {tramo["highway"]} if tramo["highway"] else None
+
+        for inc in tile_incs:
+            if not _es_significativo(inc):
+                continue
+            p     = inc.get("properties", {})
+            roads = p.get("roadNumbers") or []
+
+            if allowed and roads and not any(r in allowed for r in roads):
+                continue
+
+            alerta = _to_alerta(inc)
+            key = hashlib.md5(
+                f"{tramo['city_a']}|{tramo['city_b']}|{alerta['descripcion'][:60]}"
+                .encode()
+            ).hexdigest()[:12]
+
+            if key not in seen:
+                seen.add(key)
+                alerta["_origen"]    = tramo["city_a"]
+                alerta["_destino"]   = tramo["city_b"]
+                alerta["_carretera"] = tramo["highway"]
+                incidents.append(alerta)
+
+    logger.info(f"Corredores: {len(tramos)} tramos escaneados → {len(incidents)} incidentes")
+    return incidents
+
+
 async def harvest_incidentes() -> list[dict]:
     """Incidentes en todos los tiles de todas las regiones (cobertura nacional)."""
     if not TOMTOM_KEY:
@@ -196,9 +268,10 @@ async def harvest_incidentes() -> list[dict]:
 async def main():
     logger.info("=== Harvest Centinela Vial — inicio ===")
 
-    (clima_recs, flujo_recs), inc_recs = await asyncio.gather(
+    (clima_recs, flujo_recs), inc_recs, corredor_recs = await asyncio.gather(
         harvest_clima_y_flujo(),
         harvest_incidentes(),
+        harvest_corredores(),
     )
 
     if clima_recs:
@@ -207,12 +280,15 @@ async def main():
         registrar_flujo_historico(flujo_recs)
     if inc_recs:
         registrar_incidentes_historico(inc_recs)
+    if corredor_recs:
+        registrar_incidentes_historico(corredor_recs)
 
     logger.info(
         f"=== Harvest completado: "
         f"{len(clima_recs)} clima | "
         f"{len(flujo_recs)} flujo | "
-        f"{len(inc_recs)} incidentes ==="
+        f"{len(inc_recs)} incidentes generales | "
+        f"{len(corredor_recs)} incidentes en corredores ==="
     )
 
 
