@@ -516,7 +516,7 @@ async def cmd_escaneo(bot: Bot, chat_id: int):
 
 
 async def cmd_zona(bot: Bot, chat_id: int):
-    await bot.send_message(chat_id=chat_id, text="📡 Escaneando ZMVM Norte...")
+    await bot.send_message(chat_id=chat_id, text="📡 Generando reporte vial...")
 
     try:
         por_mun = await escaneo_zmvm_norte()
@@ -529,61 +529,106 @@ async def cmd_zona(bot: Bot, chat_id: int):
         return
 
     from datetime import datetime, timezone, timedelta
-    hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%H:%M")
+    _DIAS = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
+    _MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
+    now = datetime.now(timezone(timedelta(hours=-6)))
+    fecha_txt = f"{_DIAS[now.weekday()]} {now.day} {_MESES[now.month-1]} · {now.strftime('%H:%M')} h"
 
-    _EMOJI_FLUJO = {"MUY_LENTO": "🔴", "LENTO": "🟠", "MODERADO": "🟡", "NORMAL": "🟢", "sin_datos": "⚫"}
-    _EMOJI_MUN   = {
-        "Ecatepec":           "🏙",
-        "Coacalco":           "🏙",
-        "Tecámac":            "🏙",
-        "Tlalnepantla":       "🏙",
-        "Tultitlán":          "🏙",
-        "Cuautitlán Izcalli": "🏙",
+    _NIVEL_TXT = {
+        "MUY_LENTO": "tráfico muy lento",
+        "LENTO":     "tráfico lento",
+        "MODERADO":  "tráfico moderado",
+        "NORMAL":    "circulación normal",
+        "sin_datos": "sin datos",
     }
 
-    lines = [f"📡 *Zona Norte ZMVM* · {hora_mx} h\n"]
+    def _sev_mun(tramos: list[dict]) -> int:
+        """Severidad máxima del municipio: 3=crítico 2=afectado 1=moderado 0=normal."""
+        niveles = {"MUY_LENTO": 3, "LENTO": 2, "MODERADO": 1, "NORMAL": 0, "sin_datos": 0}
+        s = max((niveles.get(t["nivel"], 0) for t in tramos), default=0)
+        if s == 0 and any(t["incidentes"] for t in tramos):
+            s = 1
+        return s
 
+    def _emoji_mun(s: int) -> str:
+        return {3: "🚨", 2: "⚠️", 1: "⚠️", 0: "✅"}[s]
+
+    def _inc_tipo(desc: str) -> str:
+        """Extrae tipo de incidente en lenguaje ciudadano."""
+        if "cerrada" in desc.lower():   return "carretera cerrada"
+        if "parcial" in desc.lower():   return "cierre parcial"
+        if "obras"   in desc.lower():   return "obras en vía"
+        if "accidente" in desc.lower(): return "accidente"
+        if "inundación" in desc.lower() or "inundacion" in desc.lower(): return "inundación"
+        return "afectación vial"
+
+    def _zona_txt(direccion: str | None) -> str | None:
+        """Convierte '↗ Calle A → Calle B' en 'A / B' limpio."""
+        if not direccion:
+            return None
+        s = direccion.lstrip("↗ ").replace(" → ", " / ")
+        # Abreviar prefijos de calle para ahorrar espacio
+        for prefix in ("Calle ", "Avenida ", "Boulevard ", "Bulevar ", "Calzada "):
+            s = s.replace(prefix, "")
+        return s[:80]  # limitar longitud
+
+    # Clasificar municipios por severidad
+    muns_con_problemas = []
+    muns_normales = []
     for mun in MUNICIPIOS_ORDEN:
         tramos = por_mun.get(mun, [])
         if not tramos:
             continue
+        s = _sev_mun(tramos)
+        if s > 0:
+            muns_con_problemas.append((mun, tramos, s))
+        else:
+            muns_normales.append(mun)
 
-        con_problemas = [t for t in tramos if t["sev"] > 0]
-        todos_normales = all(t["nivel"] == "NORMAL" for t in tramos)
-        todos_sin_datos = all(t["nivel"] == "sin_datos" for t in tramos)
+    # Ordenar: mayor severidad primero
+    muns_con_problemas.sort(key=lambda x: -x[2])
 
-        if todos_normales:
-            lines.append(f"🟢 *{mun}* — flujo normal")
-            continue
-        if todos_sin_datos:
-            lines.append(f"⚫ *{mun}* — sin cobertura TomTom")
-            continue
+    lines = [
+        f"🚦 *Reporte Vial — ZMVM Norte*",
+        f"_{fecha_txt}_\n",
+    ]
 
-        lines.append(f"\n{_EMOJI_MUN[mun]} *{mun}*")
+    for mun, tramos, sev_mun in muns_con_problemas:
+        emoji_m = _emoji_mun(sev_mun)
+        lines.append(f"{emoji_m} *{mun.upper()}*")
+
         for t in tramos:
-            nivel  = t["nivel"]
-            icono  = _EMOJI_FLUJO[nivel]
-            vel_txt = ""
-            if t["velocidad"] and t["ratio"] is not None:
-                pct = int((1 - t["ratio"]) * 100)
-                vel_txt = f" · {t['velocidad']} km/h" + (f" (−{pct}%)" if pct > 2 else "")
-            lines.append(f"{icono} *{t['nombre']}*{vel_txt}")
-            for inc in t["incidentes"]:
-                desc      = inc["desc"] if isinstance(inc, dict) else inc
-                direccion = inc.get("direccion") if isinstance(inc, dict) else None
-                coords    = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
-                lines.append(f"   {desc}")
-                if direccion:
-                    lines.append(f"   {direccion}")
-                if coords[0] and coords[1]:
-                    url = f"https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}"
-                    lines.append(f"   📍 {url}")
+            # Solo tramos con congestión o incidentes
+            if t["nivel"] == "NORMAL" and not t["incidentes"]:
+                continue
 
-    if all(
-        all(t["nivel"] == "NORMAL" for t in tramos)
-        for tramos in por_mun.values() if tramos
-    ):
-        lines.append("\n✅ _Sin incidentes en todos los municipios_")
+            nivel_txt = _NIVEL_TXT.get(t["nivel"], "")
+            tipos_inc = list({_inc_tipo(inc["desc"]) for inc in t["incidentes"]})
+            detalle = nivel_txt
+            if tipos_inc:
+                detalle += (", " if nivel_txt else "") + ", ".join(tipos_inc)
+
+            lines.append(f"• *{t['nombre']}* — {detalle}")
+
+            # Zona de afectación (primera con coordenadas)
+            for inc in t["incidentes"]:
+                zona = _zona_txt(inc.get("direccion"))
+                coords = (inc.get("lat"), inc.get("lon"))
+                if zona:
+                    lines.append(f"  📍 Zona: {zona}")
+                if coords[0] and coords[1]:
+                    lines.append(f"  🗺 https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}")
+                break  # solo el primer incidente con coords para no repetir
+
+        lines.append("")
+
+    if muns_normales:
+        lines.append(f"✅ Sin afectaciones: {' · '.join(muns_normales)}\n")
+
+    if not muns_con_problemas:
+        lines.append("✅ _Todas las vialidades con circulación normal_\n")
+
+    lines.append(f"_📡 TomTom Traffic · Centinela Vial_")
 
     await bot.send_message(
         chat_id=chat_id,
