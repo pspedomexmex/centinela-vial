@@ -1,8 +1,12 @@
 {
   "version": 2,
   "functions": {
-    "api/webhook.py": {
-      "maxDuration": 30
-    }
-  }
+    "api/webhook.py":   {"maxDuration": 30},
+    "api/dashboard.py": {"maxDuration": 10},
+    "api/stats.py":     {"maxDuration": 15}
+  },
+  "rewrites": [
+    {"source": "/dashboard", "destination": "/api/dashboard"},
+    {"source": "/stats",     "destination": "/api/stats"}
+  ]
 }
