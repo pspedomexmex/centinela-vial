@@ -25,7 +25,7 @@ _CATS = {1, 3, 7, 8, 9, 11}  # Accidente, Peligroso, Carril cerrado, Cierre, Obr
 # max_dist_km           → radio máximo; autopistas = 10 km, vialidades urbanas = 5 km
 TRAMOS_ZMVM: list[tuple[str, str, float, float, str, bool, int]] = [
     # ── MEX-85D (Autopista México–Pachuca, cuota) ──────────────────────────────────
-    ("Ecatepec",           "MEX-85D — Ecatepec",              19.608, -99.015, "MEX-85D",  True,  10),
+    ("Ecatepec",           "MEX-85D — Ecatepec",              19.638, -99.001, "MEX-85D",  True,  10),
     ("Tecámac",            "MEX-85D — Tecámac",               19.700, -98.975, "MEX-85D",  True,  10),
     # ── MEX-85 libre (Carretera México–Pachuca, libre) ─────────────────────────────
     ("Ecatepec",           "MEX-85 libre — Ecatepec",         19.610, -99.008, "MEX-85",   True,  10),
@@ -38,9 +38,9 @@ TRAMOS_ZMVM: list[tuple[str, str, float, float, str, bool, int]] = [
     ("Tultitlán",          "MEX-57D — Tultitlán",             19.650, -99.162, "MEX-57D",  True,  10),
     ("Cuautitlán Izcalli", "MEX-57D — Cuautitlán Izcalli",    19.658, -99.222, "MEX-57D",  True,  10),
     # ── Circuito Exterior Mexiquense (concesionada, sin num. MEX) ─────────────────
-    ("Ecatepec",           "Circ. Ext. — Ecatepec",           19.635, -99.048, "ARCO",     False,  8),
-    ("Coacalco",           "Circ. Ext. — Coacalco",           19.640, -99.088, "ARCO",     False,  8),
-    ("Tultitlán",          "Circ. Ext. — Tultitlán",          19.656, -99.148, "ARCO",     False,  8),
+    ("Ecatepec",           "Circ. Ext. — Ecatepec",           19.635, -99.048, "ARCO",     False,  5),
+    ("Coacalco",           "Circ. Ext. — Coacalco",           19.640, -99.088, "ARCO",     False,  5),
+    ("Tultitlán",          "Circ. Ext. — Tultitlán",          19.656, -99.148, "ARCO",     False,  5),
     # ── Vialidades urbanas de Ecatepec ────────────────────────────────────────────
     ("Ecatepec",           "Vía Morelos",                     19.597, -99.038, "VIA",      False,  5),
     ("Ecatepec",           "Avenida Central",                 19.596, -99.052, "AV",       False,  5),
@@ -118,11 +118,12 @@ async def _incidents_punto(
 
         desde = _cortar(p.get("from") or "")
         hasta = _cortar(p.get("to")   or "")
-        if desde and hasta:
+        # Ocultar dirección si from == to (TomTom usa el nombre de la carretera en ambos campos)
+        if desde and hasta and desde.lower() != hasta.lower():
             direccion = f"↗ {desde} → {hasta}"
-        elif desde:
+        elif desde and not hasta:
             direccion = f"↗ desde {desde}"
-        elif hasta:
+        elif hasta and not desde:
             direccion = f"↗ hacia {hasta}"
         else:
             direccion = None
@@ -171,22 +172,31 @@ async def escaneo_zmvm_norte() -> dict[str, list[dict]]:
         else:
             ratio = None
 
-        if ratio is None:
-            nivel, sev = "sin_datos", 0
-        elif ratio < 0.40:
-            nivel, sev = "MUY_LENTO", 3
-        elif ratio < 0.65:
-            nivel, sev = "LENTO", 2
-        elif ratio < 0.85:
-            nivel, sev = "MODERADO", 1
+        if ratio is not None:
+            if ratio < 0.40:
+                nivel, sev = "MUY_LENTO", 3
+            elif ratio < 0.65:
+                nivel, sev = "LENTO", 2
+            elif ratio < 0.85:
+                nivel, sev = "MODERADO", 1
+            else:
+                nivel, sev = "NORMAL", 0
+        elif current > 0:
+            # freeflow demasiado bajo para el umbral — clasificar por velocidad absoluta
+            if current < 15:
+                nivel, sev = "MUY_LENTO", 3
+            elif current < 30:
+                nivel, sev = "LENTO", 2
+            else:
+                nivel, sev = "MODERADO", 1
         else:
-            nivel, sev = "NORMAL", 0
+            nivel, sev = "sin_datos", 0
 
-        # Deduplicar incidentes en la misma ubicación (TomTom reporta ambos sentidos)
+        # Deduplicar incidentes en la misma ubicación (~100 m: round a 2 decimales ≈ 1.1 km)
         seen: set[tuple] = set()
         dedup: list[dict] = []
         for inc in incidentes:
-            key = (round(inc.get("lat") or 0, 3), round(inc.get("lon") or 0, 3))
+            key = (round(inc.get("lat") or 0, 2), round(inc.get("lon") or 0, 2))
             if key not in seen:
                 seen.add(key)
                 dedup.append(inc)
