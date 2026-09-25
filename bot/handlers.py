@@ -50,7 +50,27 @@ async def cmd_start(bot: Bot, chat_id: int):
             "• `/trafico` — Estado del tráfico\n"
             "• `/estado` — Resumen del viaje activo\n"
             "• `/regiones` — Regiones que cubre tu ruta\n"
-            "• `/detener` — Terminar monitoreo"
+            "• `/detener` — Terminar monitoreo\n\n"
+            "📊 `/dashboard` — Ver datos históricos en tiempo real"
+        ),
+    )
+
+
+async def cmd_dashboard(bot: Bot, chat_id: int):
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=False,
+        text=(
+            "📊 *Centinela Vial — Dashboard de Tesis*\n\n"
+            "Visualiza incidentes, flujo vial y clima acumulados:\n\n"
+            "🔗 [centinela\\-vial\\.vercel\\.app/dashboard](https://centinela-vial.vercel.app/dashboard)\n\n"
+            "• Incidentes por tipo y carretera\n"
+            "• Flujo vial por ciudad\n"
+            "• Distribución por hora y día\n"
+            "• Mapa de incidentes con coordenadas\n"
+            "• Tabla de últimos registros\n\n"
+            "_Datos actualizados 3 veces al día — 06:00, 14:00, 22:00 MX_"
         ),
     )
 
