@@ -75,11 +75,18 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
 
         guardar_viaje(chat_id, {"origen": origen, "destino": destino, **resultado})
 
+        from regions.city_graph import CITY_LABELS
         regiones_info = get_regions_info(resultado["regiones"])
         regiones_txt = " → ".join(f"{r['emoji']} {r['nombre']}" for r in regiones_info)
 
         dist = f"{resultado['distancia_km']} km" if resultado["distancia_km"] else "N/D"
         dur = f"{resultado['duracion_hrs']} hrs" if resultado["duracion_hrs"] else "N/D"
+
+        city_path = resultado.get("city_path") or []
+        path_txt = ""
+        if len(city_path) > 2:
+            vias = " → ".join(CITY_LABELS.get(c, c.title()) for c in city_path[1:-1])
+            path_txt = f"\n🛣 Vía: _{vias}_\n"
 
         await bot.send_message(
             chat_id=chat_id,
@@ -87,7 +94,8 @@ async def cmd_viaje(bot: Bot, chat_id: int, args_text: str):
             text=(
                 f"✅ *Viaje iniciado*\n\n"
                 f"📍 *{resultado['origen_fmt']}*\n"
-                f"🏁 *{resultado['destino_fmt']}*\n\n"
+                f"🏁 *{resultado['destino_fmt']}*\n"
+                f"{path_txt}\n"
                 f"📏 Distancia: *{dist}*\n"
                 f"⏱ Tiempo: *{dur}*\n\n"
                 f"🗺 Regiones monitoreadas:\n{regiones_txt}\n\n"
