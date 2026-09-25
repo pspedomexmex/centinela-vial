@@ -22,6 +22,7 @@ def guardar_viaje(chat_id: int, datos: dict):
         "estados": datos.get("estados", []),
         "distancia_km": datos.get("distancia_km"),
         "duracion_hrs": datos.get("duracion_hrs"),
+        "city_path": datos.get("city_path"),
         "activo": True,
     }, on_conflict="chat_id").execute()
 

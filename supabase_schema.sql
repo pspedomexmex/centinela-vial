@@ -11,9 +11,13 @@ CREATE TABLE IF NOT EXISTS viajes (
   estados     JSONB NOT NULL DEFAULT '[]',
   distancia_km INTEGER,
   duracion_hrs REAL,
+  city_path   JSONB DEFAULT NULL,
   creado_en   TIMESTAMPTZ DEFAULT NOW(),
   activo      BOOLEAN DEFAULT TRUE
 );
+
+-- Migración para tablas existentes:
+-- ALTER TABLE viajes ADD COLUMN IF NOT EXISTS city_path JSONB DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS alertas_enviadas (
   id          SERIAL PRIMARY KEY,
