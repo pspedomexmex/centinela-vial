@@ -30,6 +30,7 @@ from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
 from db.supabase_client import (
     guardar_viaje, get_viaje, detener_viaje,
     actualizar_cierres, limpiar_cierres_viaje,
+    registrar_incidentes_historico,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,14 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         flow_task,
         weather_task,
         tweet_task,
+    )
+
+    # Guardar histórico para dataset de tesis
+    registrar_incidentes_historico(
+        tomtom_inc + flow_inc + weather_inc,
+        origen=viaje.get("origen", ""),
+        destino=viaje.get("destino", ""),
+        city_path=city_path,
     )
 
     # Sincronizar cierres y detectar reaperturas

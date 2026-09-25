@@ -3,6 +3,7 @@ Persistencia en Supabase (PostgreSQL) — reemplaza SQLite.
 """
 import os
 import json
+import hashlib
 from datetime import datetime, timedelta
 from supabase import create_client
 
@@ -120,3 +121,52 @@ def actualizar_cierres(chat_id: int, cierres_actuales: dict[str, str]) -> list[s
 def limpiar_cierres_viaje(chat_id: int):
     """Elimina todos los cierres activos al detener el viaje."""
     _db().table("cierres_activos").delete().eq("chat_id", chat_id).execute()
+
+
+def registrar_incidentes_historico(
+    incidentes: list[dict],
+    origen: str = "",
+    destino: str = "",
+    city_path: list[str] | None = None,
+):
+    """
+    Guarda incidentes en el histórico para el dataset de tesis.
+    Dedup por (hash_contenido, fecha) — un registro por incidente por día.
+    Inserta en lote y silencia conflictos de duplicados.
+    """
+    if not incidentes:
+        return
+
+    registros = []
+    for inc in incidentes:
+        desc = inc.get("descripcion", "")
+        tipo = inc.get("tipo", "")
+        raw  = f"{tipo}|{desc[:100]}"
+        h    = hashlib.md5(raw.encode()).hexdigest()[:16]
+
+        coords_lat = coords_lon = None
+        if inc.get("coords"):
+            coords_lat, coords_lon = inc["coords"]
+
+        registros.append({
+            "origen":         origen,
+            "destino":        destino,
+            "city_path":      city_path,
+            "tipo":           tipo,
+            "descripcion":    desc,
+            "severidad":      int(inc.get("severidad", 0)),
+            "fuente":         inc.get("fuente", "TomTom"),
+            "hora_incidente": inc.get("hora"),
+            "coords_lat":     coords_lat,
+            "coords_lon":     coords_lon,
+            "hash_contenido": h,
+        })
+
+    try:
+        _db().table("incidentes_historico").upsert(
+            registros,
+            on_conflict="hash_contenido,fecha",
+            ignore_duplicates=True,
+        ).execute()
+    except Exception:
+        pass

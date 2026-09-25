@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.supabase_client import (
     get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas,
-    actualizar_cierres,
+    actualizar_cierres, registrar_incidentes_historico,
 )
 from sources.tomtom_incidents import (
     get_incidents_for_city_route as _city_incidents,
@@ -82,6 +82,15 @@ async def check_viaje(viaje: dict):
 
     (tomtom_inc, _), flow_inc, weather_inc, (tweet_inc, _) = await asyncio.gather(
         inc_task, flow_task, weather_task, tweet_task,
+    )
+
+    # ── Guardar histórico para dataset de tesis ────────────────────
+    todos_historico = tomtom_inc + flow_inc + weather_inc
+    registrar_incidentes_historico(
+        todos_historico,
+        origen=viaje.get("origen", ""),
+        destino=viaje.get("destino", ""),
+        city_path=city_path,
     )
 
     # ── Detección de reaperturas ───────────────────────────────────
