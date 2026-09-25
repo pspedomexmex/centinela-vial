@@ -8,6 +8,7 @@ Comando: /zona
 """
 import os
 import asyncio
+import math
 import httpx
 
 TOMTOM_KEY = os.environ.get("TOMTOM_KEY", "")
@@ -59,6 +60,14 @@ async def _flow_punto(client: httpx.AsyncClient, lat: float, lon: float) -> dict
         return {}
 
 
+def _dist_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    dlat = (lat2 - lat1) * 111.0
+    dlon = (lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    return math.sqrt(dlat ** 2 + dlon ** 2)
+
+_MAX_DIST_KM = 10  # descartar incidentes a más de 10 km del punto de medición
+
+
 async def _incidents_punto(
     client: httpx.AsyncClient,
     lat: float,
@@ -66,7 +75,7 @@ async def _incidents_punto(
     hw: str,
     require_federal: bool,
 ) -> list[dict]:
-    from sources.tomtom_incidents import _fetch_tile, CATEGORIA
+    from sources.tomtom_incidents import _fetch_tile, CATEGORIA, _extract_coords
     incs = await _fetch_tile(client, lat, lon)
     resultados = []
     for inc in incs:
@@ -74,29 +83,52 @@ async def _incidents_punto(
         cat = p.get("iconCategory", 0)
         if cat not in _CATS:
             continue
-        if require_federal:
-            roads   = p.get("roadNumbers") or []
-            federal = [r for r in roads if "MEX-" in r or r.startswith("MEX")]
-            if not federal:
-                continue
-            hw_label = federal[0]
-        else:
-            hw_label = hw
 
-        geom   = inc.get("geometry", {})
-        coords = geom.get("coordinates", [])
-        inc_lat = inc_lon = None
-        if coords:
-            mid = coords[len(coords) // 2]
-            inc_lon, inc_lat = mid[0], mid[1]
+        roads = p.get("roadNumbers") or []
+
+        if require_federal:
+            # Solo el número exacto del tramo que estamos monitoreando
+            if hw not in roads:
+                continue
+
+        # Extraer coordenadas y descartar si está fuera del radio del tramo
+        coords_inc = _extract_coords(inc)
+        if coords_inc:
+            inc_lat, inc_lon = coords_inc
+            if _dist_km(lat, lon, inc_lat, inc_lon) > _MAX_DIST_KM:
+                continue
+        else:
+            inc_lat = inc_lon = None
 
         emoji, tipo = CATEGORIA.get(cat, ("⚠️", "Incidente"))
         mag     = p.get("magnitudeOfDelay", 0) or 0
         mag_txt = {1: "menor", 2: "moderado", 3: "grave", 4: "crítico"}.get(mag, "")
-        desc    = f"{emoji} {tipo} en {hw_label}"
+        desc    = f"{emoji} {tipo} en {hw}"
         if mag_txt:
             desc += f" ({mag_txt})"
-        resultados.append({"desc": desc, "lat": inc_lat, "lon": inc_lon})
+
+        # Sentido/dirección del incidente (campos from/to de TomTom)
+        # Recortar texto antes del primer paréntesis (evita repetir nombre de carretera)
+        def _cortar(s: str) -> str:
+            return s.split("(")[0].strip(" ,/")
+
+        desde = _cortar(p.get("from") or "")
+        hasta = _cortar(p.get("to")   or "")
+        if desde and hasta:
+            direccion = f"↗ {desde} → {hasta}"
+        elif desde:
+            direccion = f"↗ desde {desde}"
+        elif hasta:
+            direccion = f"↗ hacia {hasta}"
+        else:
+            direccion = None
+
+        resultados.append({
+            "desc":      desc,
+            "direccion": direccion,
+            "lat":       inc_lat,
+            "lon":       inc_lon,
+        })
     return resultados[:2]
 
 

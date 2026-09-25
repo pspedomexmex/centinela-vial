@@ -570,14 +570,15 @@ async def cmd_zona(bot: Bot, chat_id: int):
                 vel_txt = f" · {t['velocidad']} km/h" + (f" (−{pct}%)" if pct > 2 else "")
             lines.append(f"{icono} *{t['nombre']}*{hw_txt}{vel_txt}")
             for inc in t["incidentes"]:
-                desc   = inc["desc"] if isinstance(inc, dict) else inc
-                coords = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
+                desc      = inc["desc"] if isinstance(inc, dict) else inc
+                direccion = inc.get("direccion") if isinstance(inc, dict) else None
+                coords    = (inc.get("lat"), inc.get("lon")) if isinstance(inc, dict) else (None, None)
+                lines.append(f"   {desc}")
+                if direccion:
+                    lines.append(f"   {direccion}")
                 if coords[0] and coords[1]:
                     url = f"https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}"
-                    lines.append(f"   {desc}")
                     lines.append(f"   📍 {url}")
-                else:
-                    lines.append(f"   {desc}")
 
     if all(
         all(t["nivel"] == "NORMAL" for t in tramos)
