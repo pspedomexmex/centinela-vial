@@ -177,15 +177,18 @@ async def _fetch_tile(client: httpx.AsyncClient, lat: float, lon: float) -> list
 
 
 def _es_significativo(inc: dict) -> bool:
-    """Solo reportar incidentes en carreteras federales (con número MEX-XX)."""
     p = inc.get("properties", {})
     cat = p.get("iconCategory", 0)
-    road_numbers = p.get("roadNumbers") or []
-    if not road_numbers:
-        return False
     if cat in CATEGORIAS_IGNORADAS:
         return False
-    return cat in CATEGORIAS_CRITICAS
+    if cat not in CATEGORIAS_CRITICAS:
+        return False
+    # Cierres de carretera (cat 8): reportar aunque TomTom no asigne número MEX-XX.
+    # El tile ya garantiza proximidad geográfica al corredor.
+    if cat == 8:
+        return True
+    # Resto de categorías críticas: requerir número de carretera federal.
+    return bool(p.get("roadNumbers"))
 
 
 def _fmt_hora(iso: str | None) -> str | None:
@@ -333,7 +336,10 @@ def _dedup_incidents(
                 continue
             p = inc.get("properties", {})
             roads = p.get("roadNumbers") or []
-            if tile_allowed and not any(r in tile_allowed for r in roads):
+            cat = p.get("iconCategory", 0)
+            # Cierres (cat 8) sin número de carretera: pasan por proximidad geográfica del tile.
+            # Resto: filtrar por highway del corredor.
+            if tile_allowed and roads and not any(r in tile_allowed for r in roads):
                 continue
             road_key = ",".join(sorted(roads))
             if road_count.get(road_key, 0) >= 2:
