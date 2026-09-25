@@ -208,8 +208,9 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         hay_algo = True
         fuente_label = tweet_inc[0].get("fuente", "Noticias")
         lines.append(f"\n📰 *Noticias viales ({fuente_label})*")
-        for inc in tweet_inc[:3]:
-            lines.append(f"{inc['emoji']} {inc['descripcion']}")
+        for inc in tweet_inc[:4]:
+            autor = f"  `{inc['autor']}`" if inc.get("autor") else ""
+            lines.append(f"{inc['emoji']} {inc['descripcion']}{autor}")
         lines.append("")
     elif not nitter_up:
         lines.append("📰 _Noticias viales no disponibles_\n")

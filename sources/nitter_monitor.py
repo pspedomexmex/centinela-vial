@@ -19,8 +19,23 @@ from urllib.parse import quote_plus
 GNEWS_URL = "https://news.google.com/rss/search"
 GNEWS_PARAMS = {"hl": "es-419", "gl": "MX", "ceid": "MX:es-419"}
 
-# Palabras clave base para cualquier consulta vial
+# Query 1 — incidentes generales
 _KW_BASE = "carretera (accidente OR cierre OR bloqueo OR derrumbe OR volcadura OR inundacion)"
+
+# Query 2 — fuentes oficiales mexicanas
+_KW_OFICIAL = '(CAPUFE OR SICT OR "Guardia Nacional" OR "Centro SCT") (carretera OR autopista OR caseta)'
+
+# Agencias oficiales — detección en el texto del artículo
+_AGENCIAS: dict[str, tuple[str, str]] = {
+    "capufe":                        ("🛣", "CAPUFE"),
+    "sict":                          ("🏛", "SICT"),
+    "guardia nacional":              ("👮", "Guardia Nacional"),
+    "centro sct":                    ("🏛", "SICT"),
+    "secretaría de infraestructura": ("🏛", "SICT"),
+    "secretaria de infraestructura": ("🏛", "SICT"),
+    "policía federal":               ("👮", "G. Nacional"),
+    "policia federal":               ("👮", "G. Nacional"),
+}
 
 # ── Nitter (fallback) ──────────────────────────────────────────────────────────
 NITTER_INSTANCES = [
@@ -56,6 +71,15 @@ def _clasificar(texto: str) -> tuple[str, str]:
     return "📡", "Aviso vial"
 
 
+def _detectar_agencia(texto: str) -> tuple[str, str] | None:
+    """Retorna (emoji, nombre) si el texto menciona una agencia oficial."""
+    t = texto.lower()
+    for kw, (emoji, nombre) in _AGENCIAS.items():
+        if kw in t:
+            return emoji, nombre
+    return None
+
+
 def _es_relevante(texto: str, highways: set[str], city_labels: list[str]) -> bool:
     t = texto.lower()
     if not any(k in t for k in _KEYWORDS_RELEVANTES):
@@ -70,40 +94,47 @@ def _es_relevante(texto: str, highways: set[str], city_labels: list[str]) -> boo
     return True
 
 
-def _to_alerta(texto: str, fuente: str = "Noticias") -> dict:
+def _to_alerta(texto: str, fuente: str = "Noticias", oficial: bool = False) -> dict:
     emoji, tipo = _clasificar(texto)
+    agencia = _detectar_agencia(texto)
     h = hashlib.md5(texto[:80].encode()).hexdigest()[:12]
+
+    # Si viene de query oficial o el texto menciona una agencia, etiquetar
+    desc = texto
+    autor = None
+    if agencia:
+        ag_emoji, ag_nombre = agencia
+        autor = f"{ag_emoji} {ag_nombre}"
+
     return {
         "tipo": tipo,
         "emoji": emoji,
-        "descripcion": texto,
-        "autor": None,
+        "descripcion": desc,
+        "autor": autor,
         "hora": None,
-        "severidad": 0,
+        "severidad": 2 if (oficial or agencia) else 0,  # prioriza fuentes oficiales
         "fuente": fuente,
         "coords": None,
         "cierre_hash": None,
         "tweet_hash": h,
+        "oficial": bool(oficial or agencia),
     }
 
 
 # ── Google News RSS ────────────────────────────────────────────────────────────
 
-def _build_query(highways: set[str], city_labels: list[str]) -> str:
-    """Construye la query de búsqueda combinando keywords de la ruta."""
-    parts = [_KW_BASE]
+def _route_suffix(highways: set[str], city_labels: list[str]) -> str:
+    """Sufijo de ruta para añadir a cualquier query."""
     if highways:
-        hw_q = " OR ".join(f'"{h}"' for h in sorted(highways)[:4])
-        parts.append(f"({hw_q})")
-    elif city_labels:
-        city_q = " OR ".join(f'"{c}"' for c in city_labels[:4])
-        parts.append(f"({city_q})")
-    return " ".join(parts)
+        return " (" + " OR ".join(f'"{h}"' for h in sorted(highways)[:4]) + ")"
+    if city_labels:
+        return " (" + " OR ".join(f'"{c}"' for c in city_labels[:4]) + ")"
+    return ""
 
 
-def _parse_gnews(xml_text: str) -> list[str]:
-    """Extrae títulos de artículos de las últimas 6 horas del RSS de Google News."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+def _parse_gnews(xml_text: str, max_hours: int = 6) -> list[str]:
+    """Extrae títulos de artículos recientes del RSS de Google News."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_hours)
     titles = []
     try:
         root = ET.fromstring(xml_text)
@@ -123,11 +154,10 @@ def _parse_gnews(xml_text: str) -> list[str]:
     return titles
 
 
-async def _fetch_gnews(
-    client: httpx.AsyncClient, highways: set[str], city_labels: list[str]
-) -> tuple[list[str], bool]:
-    """Retorna (títulos, disponible)."""
-    query = _build_query(highways, city_labels)
+async def _fetch_one(
+    client: httpx.AsyncClient, query: str
+) -> list[str]:
+    """Fetch RSS de Google News para una query. Retorna [] si falla."""
     try:
         r = await client.get(
             GNEWS_URL,
@@ -136,9 +166,41 @@ async def _fetch_gnews(
             follow_redirects=True,
         )
         r.raise_for_status()
-        return _parse_gnews(r.text), True
+        return _parse_gnews(r.text)
+    except Exception:
+        return []
+
+
+async def _fetch_gnews(
+    client: httpx.AsyncClient, highways: set[str], city_labels: list[str]
+) -> tuple[list[tuple[str, bool]], bool]:
+    """
+    Lanza DOS queries en paralelo:
+      1. Incidentes generales en el corredor
+      2. Fuentes oficiales (CAPUFE, SICT, Guardia Nacional) en el corredor
+    Retorna (lista de (título, es_oficial), disponible).
+    """
+    suffix = _route_suffix(highways, city_labels)
+    q_inc     = _KW_BASE + suffix
+    q_oficial = _KW_OFICIAL + suffix
+
+    try:
+        inc_titles, oficial_titles = await asyncio.gather(
+            _fetch_one(client, q_inc),
+            _fetch_one(client, q_oficial),
+        )
+        disponible = True
     except Exception:
         return [], False
+
+    # Marcar origen: (título, es_oficial)
+    results: list[tuple[str, bool]] = []
+    for t in oficial_titles:
+        results.append((t, True))
+    for t in inc_titles:
+        results.append((t, False))
+
+    return results, disponible
 
 
 # ── Nitter fallback ────────────────────────────────────────────────────────────
@@ -206,28 +268,33 @@ async def _get_alertas(
     Retorna (alertas_filtradas, disponible).
     """
     async with httpx.AsyncClient() as client:
-        titles, gnews_up = await _fetch_gnews(client, highways, city_labels)
+        tagged_titles, gnews_up = await _fetch_gnews(client, highways, city_labels)
 
     fuente = "Google News"
     disponible = gnews_up
 
     if not gnews_up:
-        titles, nitter_up = await _fetch_nitter()
+        raw_titles, nitter_up = await _fetch_nitter()
         fuente = "X/Twitter"
         disponible = nitter_up
+        tagged_titles = [(t, False) for t in raw_titles]
 
     seen: set[str] = set()
     alerts: list[dict] = []
-    for title in titles:
+    for title, es_oficial in tagged_titles:
         if not _es_relevante(title, highways, city_labels):
-            continue
+            # Las fuentes oficiales pasan con filtro más relajado si mencionan la ruta
+            if not (es_oficial and _detectar_agencia(title)):
+                continue
         key = title[:50]
         if key in seen:
             continue
         seen.add(key)
-        alerts.append(_to_alerta(title, fuente))
+        alerts.append(_to_alerta(title, fuente, oficial=es_oficial))
 
-    return alerts[:5], disponible
+    # Oficiales primero, luego por severidad
+    alerts.sort(key=lambda x: (not x.get("oficial"), -x["severidad"]))
+    return alerts[:6], disponible
 
 
 # ── API pública (mismas firmas que antes) ──────────────────────────────────────
