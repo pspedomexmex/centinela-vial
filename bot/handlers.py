@@ -205,13 +205,13 @@ async def cmd_alertas(bot: Bot, chat_id: int):
     # ── Sección 4: Avisos de X/Twitter ─────────────────────────
     if tweet_inc:
         hay_algo = True
-        lines.append("\n🐦 *Avisos viales (@SCT_mx / @CAPUFE_Oficial)*")
+        fuente_label = tweet_inc[0].get("fuente", "Noticias")
+        lines.append(f"\n📰 *Noticias viales ({fuente_label})*")
         for inc in tweet_inc[:3]:
-            autor = f" _{inc['autor']}_" if inc.get("autor") else ""
-            lines.append(f"{inc['emoji']} {inc['descripcion']}{autor}")
+            lines.append(f"{inc['emoji']} {inc['descripcion']}")
         lines.append("")
     elif not nitter_up:
-        lines.append("🐦 _X/Twitter no disponible (Nitter caído)_\n")
+        lines.append("📰 _Noticias viales no disponibles_\n")
 
     await bot.send_message(
         chat_id=chat_id,
