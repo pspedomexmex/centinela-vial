@@ -35,6 +35,7 @@ CITY_NODES: dict[str, tuple[float, float]] = {
     "veracruz":          (19.20,  -96.13),
     "coatzacoalcos":     (18.14,  -94.44),
     "tampico":           (22.25,  -97.87),
+    "tuxpan":            (20.96,  -97.40),
     "ciudad_valles":     (21.99,  -99.01),
     # Sureste
     "villahermosa":      (17.99,  -92.93),
@@ -69,6 +70,7 @@ CITY_NODES: dict[str, tuple[float, float]] = {
     "piedras_negras":    (28.70, -100.52),
     "monclova":          (26.91, -101.42),
     "linares":           (24.86,  -99.54),
+    "ciudad_victoria":   (23.74,  -99.15),
     # Norte
     "durango":           (24.02, -104.66),
     "chihuahua":         (28.63, -106.07),
@@ -76,6 +78,7 @@ CITY_NODES: dict[str, tuple[float, float]] = {
     "parral":            (26.93, -105.67),
     "cuauhtemoc":        (28.41, -106.87),
     "nuevo_casas_grandes":(30.41,-107.91),
+    "ojinaga":           (29.57, -104.41),
     # Noroeste
     "hermosillo":        (29.07, -110.97),
     "culiacan":          (24.80, -107.40),
@@ -94,7 +97,7 @@ CITY_LABELS: dict[str, str] = {
     "cdmx": "CDMX", "puebla": "Puebla", "cuernavaca": "Cuernavaca",
     "pachuca": "Pachuca", "toluca": "Toluca", "xalapa": "Xalapa",
     "veracruz": "Veracruz", "coatzacoalcos": "Coatzacoalcos",
-    "tampico": "Tampico", "ciudad_valles": "Ciudad Valles",
+    "tampico": "Tampico", "tuxpan": "Tuxpan", "ciudad_valles": "Ciudad Valles",
     "villahermosa": "Villahermosa", "campeche": "Campeche",
     "cd_carmen": "Ciudad del Carmen", "merida": "Mérida",
     "cancun": "Cancún", "oaxaca": "Oaxaca", "tapachula": "Tapachula",
@@ -108,10 +111,12 @@ CITY_LABELS: dict[str, str] = {
     "monterrey": "Monterrey", "saltillo": "Saltillo",
     "torreon": "Torreón", "nuevo_laredo": "Nuevo Laredo",
     "reynosa": "Reynosa", "matamoros": "Matamoros",
-    "piedras_negras": "Piedras Negras", "monclova": "Monclova", "linares": "Linares",
+    "piedras_negras": "Piedras Negras", "monclova": "Monclova",
+    "linares": "Linares", "ciudad_victoria": "Ciudad Victoria",
     "durango": "Durango", "chihuahua": "Chihuahua",
     "ciudad_juarez": "Ciudad Juárez", "parral": "Parral",
     "cuauhtemoc": "Cuauhtémoc", "nuevo_casas_grandes": "Nuevo Casas Grandes",
+    "ojinaga": "Ojinaga",
     "hermosillo": "Hermosillo", "culiacan": "Culiacán",
     "mazatlan": "Mazatlán", "los_mochis": "Los Mochis",
     "nogales": "Nogales", "mexicali": "Mexicali",
@@ -189,6 +194,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "reynosa": {
         "monterrey":      "MEX-40",
         "matamoros":      "MEX-101",
+        "ciudad_victoria":"MEX-101",
     },
     "matamoros": {
         "monterrey":      "MEX-40",
@@ -198,7 +204,13 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "linares": {
         "monterrey":      "MEX-85",
         "saltillo":       "MEX-58",    # MEX-58 vía Galeana
+        "ciudad_victoria":"MEX-85",
+    },
+    "ciudad_victoria": {
+        "linares":        "MEX-85",
         "tampico":        "MEX-85",
+        "reynosa":        "MEX-101",   # MEX-101 noreste
+        "ciudad_valles":  "MEX-85",    # MEX-85 sur vía El Mante
     },
     "piedras_negras": {
         "saltillo":       "MEX-57",
@@ -231,6 +243,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "cuauhtemoc":     "MEX-16",
         "parral":         "MEX-45",
         "nuevo_casas_grandes": "MEX-10",
+        "ojinaga":        "MEX-16",    # frontera con Presidio TX
     },
     "ciudad_juarez": {
         "chihuahua":      "MEX-45",
@@ -247,6 +260,9 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "nuevo_casas_grandes": {
         "cuauhtemoc":     "MEX-16",
         "chihuahua":      "MEX-10",
+    },
+    "ojinaga": {
+        "chihuahua":      "MEX-16",
     },
     # ── Noroeste: Hermosillo y corredor Pacífico ───────────────────
     "hermosillo": {
@@ -336,7 +352,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "veracruz": {
         "puebla":         "MEX-150D",
         "xalapa":         "MEX-140",
-        "tampico":        "MEX-180",
+        "tuxpan":         "MEX-180",
         "coatzacoalcos":  "MEX-180D",
     },
     "xalapa": {
@@ -345,15 +361,21 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     },
     # ── Eje Golfo (MEX-180/85) ─────────────────────────────────────
     "tampico": {
-        "linares":        "MEX-85",    # MEX-85 norte → Monterrey vía Linares
+        "ciudad_victoria":"MEX-85",    # MEX-85 norte → Monterrey vía Cd. Victoria
         "ciudad_valles":  "MEX-70",
-        "veracruz":       "MEX-180",
+        "tuxpan":         "MEX-180",
         "matamoros":      "MEX-180",
     },
     "ciudad_valles": {
         "tampico":        "MEX-70",
         "san_luis_potosi":"MEX-70",
         "pachuca":        "MEX-85",    # MEX-85 sur → CDMX vía sierra Hidalguense
+        "ciudad_victoria":"MEX-85",    # MEX-85 norte vía El Mante
+    },
+    "tuxpan": {
+        "tampico":        "MEX-180",
+        "veracruz":       "MEX-180",
+        "pachuca":        "MEX-130",   # MEX-130 vía Poza Rica-Tulancingo (sierra)
     },
     # ── Eje Sureste (MEX-180/186) VH-Campeche-Mérida ──────────────
     "coatzacoalcos": {
@@ -452,6 +474,9 @@ _ALIASES_RAW: dict[str, str] = {
     # Tampico
     "tampico": "tampico", "altamira": "tampico",
     "ciudad madero": "tampico", "cd madero": "tampico",
+    # Tuxpan
+    "tuxpan": "tuxpan", "tuxpan ver": "tuxpan",
+    "poza rica": "tuxpan", "papantla": "tuxpan", "tantoyuca": "tuxpan",
     # Ciudad Valles
     "ciudad valles": "ciudad_valles", "cd valles": "ciudad_valles",
     "valles": "ciudad_valles", "tamazunchale": "ciudad_valles",
@@ -532,6 +557,12 @@ _ALIASES_RAW: dict[str, str] = {
     "linares": "linares", "montemorelos": "linares",
     "general teran": "linares", "hualahuises": "linares",
     "iturbide nl": "linares",
+    # Ciudad Victoria
+    "ciudad victoria": "ciudad_victoria", "victoria": "ciudad_victoria",
+    "cd victoria": "ciudad_victoria", "victoria tam": "ciudad_victoria",
+    "el mante": "ciudad_victoria", "mante": "ciudad_victoria",
+    "ciudad mante": "ciudad_victoria", "cd mante": "ciudad_victoria",
+    "gonzalez tam": "ciudad_victoria", "casas tam": "ciudad_victoria",
     # Saltillo
     "saltillo": "saltillo", "ramos arizpe": "saltillo",
     "parras": "saltillo", "arteaga coah": "saltillo",
@@ -568,7 +599,9 @@ _ALIASES_RAW: dict[str, str] = {
     # Nuevo Casas Grandes
     "nuevo casas grandes": "nuevo_casas_grandes",
     "casas grandes": "nuevo_casas_grandes",
-    "cd juarez ojinaga": "nuevo_casas_grandes",
+    # Ojinaga
+    "ojinaga": "ojinaga", "presidio": "ojinaga",
+    "manuel benavides": "ojinaga", "coyame": "ojinaga",
     # Hermosillo
     "hermosillo": "hermosillo", "guaymas": "hermosillo",
     "empalme": "hermosillo", "navojoa": "hermosillo",
@@ -659,11 +692,13 @@ EDGE_KM: dict[str, dict[str, int]] = {
                         "piedras_negras": 290, "monclova": 180, "linares": 170},
     "monclova":        {"saltillo": 180, "piedras_negras": 150, "torreon": 210,
                         "monterrey": 200},
-    "linares":         {"monterrey": 137, "saltillo": 170, "tampico": 245},
+    "linares":         {"monterrey": 137, "saltillo": 170, "ciudad_victoria": 105},
+    "ciudad_victoria": {"linares": 105, "tampico": 145, "reynosa": 280,
+                        "ciudad_valles": 175},
     "torreon":         {"saltillo": 250, "durango": 260, "zacatecas": 250,
                         "monclova": 210},
     "nuevo_laredo":    {"monterrey": 230, "piedras_negras": 270},
-    "reynosa":         {"monterrey": 210, "matamoros": 90},
+    "reynosa":         {"monterrey": 210, "matamoros": 90, "ciudad_victoria": 280},
     "matamoros":       {"monterrey": 260, "reynosa": 90, "tampico": 310},
     "piedras_negras":  {"saltillo": 290, "monclova": 150, "nuevo_laredo": 270},
     "zacatecas":       {"san_luis_potosi": 190, "aguascalientes": 130,
@@ -673,7 +708,8 @@ EDGE_KM: dict[str, dict[str, int]] = {
                         "mazatlan": 310, "parral": 230},
     "chihuahua":       {"durango": 540, "ciudad_juarez": 370, "hermosillo": 590,
                         "cuauhtemoc": 100, "parral": 220,
-                        "nuevo_casas_grandes": 330},
+                        "nuevo_casas_grandes": 330, "ojinaga": 226},
+    "ojinaga":         {"chihuahua": 226},
     "ciudad_juarez":   {"chihuahua": 370, "agua_prieta": 310},
     "parral":          {"chihuahua": 220, "durango": 230},
     "cuauhtemoc":      {"chihuahua": 100, "nuevo_casas_grandes": 180},
@@ -700,12 +736,14 @@ EDGE_KM: dict[str, dict[str, int]] = {
                         "colima": 45},
     "lazaro_cardenas": {"morelia": 340, "manzanillo": 220, "colima": 280},
     "puebla":          {"cdmx": 130, "veracruz": 250, "oaxaca": 360},
-    "veracruz":        {"puebla": 250, "xalapa": 110, "tampico": 320,
+    "veracruz":        {"puebla": 250, "xalapa": 110, "tuxpan": 155,
                         "coatzacoalcos": 300},
     "xalapa":          {"veracruz": 110, "puebla": 300},
-    "tampico":         {"linares": 245, "ciudad_valles": 110,
-                        "veracruz": 320, "matamoros": 310},
-    "ciudad_valles":   {"tampico": 110, "san_luis_potosi": 200, "pachuca": 480},
+    "tampico":         {"ciudad_victoria": 145, "ciudad_valles": 110,
+                        "tuxpan": 165, "matamoros": 310},
+    "tuxpan":          {"tampico": 165, "veracruz": 155, "pachuca": 335},
+    "ciudad_valles":   {"tampico": 110, "san_luis_potosi": 200, "pachuca": 480,
+                        "ciudad_victoria": 175},
     "coatzacoalcos":   {"veracruz": 300, "villahermosa": 170, "oaxaca": 400},
     "villahermosa":    {"coatzacoalcos": 170, "campeche": 440, "cd_carmen": 200},
     "campeche":        {"villahermosa": 440, "merida": 190, "cd_carmen": 190},
@@ -720,7 +758,7 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "acapulco":        {"cuernavaca": 300},
     # MEX-85 Pachuca→Ciudad Valles pasa por sierra Hidalguense (2 carriles, lento)
     # Se penaliza con +150 km efectivos para que Dijkstra prefiera MEX-57D
-    "pachuca":         {"cdmx": 90, "ciudad_valles": 480},
+    "pachuca":         {"cdmx": 90, "ciudad_valles": 480, "tuxpan": 335},
 }
 
 # ── Velocidades especiales por tramo (km/h para transporte de carga) ──────────
@@ -743,6 +781,8 @@ _SLOW_EDGES: dict[tuple[str, str], int] = {
     ("coatzacoalcos",  "oaxaca"):          65,
     ("pachuca",        "ciudad_valles"):   55,  # MEX-85 sierra Hidalguense
     ("ciudad_valles",  "pachuca"):         55,
+    ("tuxpan",         "pachuca"):         60,  # MEX-130 Sierra Norte de Puebla
+    ("pachuca",        "tuxpan"):          60,
 }
 
 
@@ -866,16 +906,19 @@ def city_path_to_regions(city_path: list[str]) -> list[str]:
         "queretaro": "centro_norte", "leon": "centro_norte",
         "aguascalientes": "centro_norte", "zacatecas": "centro_norte",
         "san_luis_potosi": "noreste", "matehuala": "noreste",
+        "tampico": "noreste", "tuxpan": "golfo",
         "guadalajara": "occidente", "tepic": "occidente",
         "colima": "occidente", "morelia": "occidente",
         "lazaro_cardenas": "occidente", "manzanillo": "occidente",
-        "monterrey": "noreste", "linares": "noreste", "saltillo": "norte",
+        "monterrey": "noreste", "linares": "noreste",
+        "ciudad_victoria": "noreste",
+        "saltillo": "norte",
         "torreon": "norte", "nuevo_laredo": "noreste",
         "reynosa": "noreste", "matamoros": "noreste",
         "piedras_negras": "norte", "monclova": "norte",
         "durango": "norte", "chihuahua": "norte",
         "ciudad_juarez": "norte", "parral": "norte",
-        "cuauhtemoc": "norte", "nuevo_casas_grandes": "norte",
+        "cuauhtemoc": "norte", "nuevo_casas_grandes": "norte", "ojinaga": "norte",
         "hermosillo": "noroeste", "culiacan": "noroeste",
         "mazatlan": "noroeste", "los_mochis": "noroeste",
         "nogales": "noroeste", "mexicali": "noroeste",
