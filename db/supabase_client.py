@@ -4,8 +4,20 @@ Persistencia en Supabase (PostgreSQL) — reemplaza SQLite.
 import os
 import json
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from supabase import create_client
+
+_TZ_MX = timezone(timedelta(hours=-6))
+
+
+def _campos_tiempo() -> dict:
+    """Fecha, día de semana y hora en zona horaria México (UTC-6)."""
+    ahora = datetime.now(_TZ_MX)
+    return {
+        "fecha":        ahora.date().isoformat(),
+        "dia_semana":   ahora.isoweekday() % 7,  # 0=dom … 6=sab
+        "hora_del_dia": ahora.hour,
+    }
 
 
 def _db():
@@ -127,9 +139,11 @@ def registrar_clima_historico(registros: list[dict]):
     """Guarda snapshot de clima de las 55 ciudades. Dedup por (ciudad, fecha, hora_del_dia)."""
     if not registros:
         return
+    campos = _campos_tiempo()
+    filas  = [{**r, **campos} for r in registros]
     try:
         _db().table("clima_historico").upsert(
-            registros,
+            filas,
             on_conflict="ciudad,fecha,hora_del_dia",
             ignore_duplicates=True,
         ).execute()
@@ -141,9 +155,11 @@ def registrar_flujo_historico(registros: list[dict]):
     """Guarda snapshot de flujo vial de las 55 ciudades. Dedup por (ciudad, fecha, hora_del_dia)."""
     if not registros:
         return
+    campos = _campos_tiempo()
+    filas  = [{**r, **campos} for r in registros]
     try:
         _db().table("flujo_historico").upsert(
-            registros,
+            filas,
             on_conflict="ciudad,fecha,hora_del_dia",
             ignore_duplicates=True,
         ).execute()
@@ -177,6 +193,7 @@ def registrar_incidentes_historico(
             coords_lat, coords_lon = inc["coords"]
 
         registros.append({
+            **_campos_tiempo(),
             "origen":         origen,
             "destino":        destino,
             "city_path":      city_path,
