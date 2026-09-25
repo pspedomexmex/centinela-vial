@@ -243,8 +243,8 @@ function renderFlujo(datos){
 function renderMapa(puntos){
   if(!map){
     map = L.map('map').setView([23.0,-102.0],5);
-    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-      {attribution:'© Stadia Maps © OpenMapTiles © OpenStreetMap',maxZoom:18}).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      {attribution:'© Esri © HERE © OpenStreetMap',maxZoom:16}).addTo(map);
   }
   map.eachLayer(l=>{if(l instanceof L.CircleMarker)map.removeLayer(l);});
   const typeColor={'Carretera cerrada':'#ef4444','Accidente':'#f97316',
