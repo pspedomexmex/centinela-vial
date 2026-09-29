@@ -22,6 +22,15 @@ HTML = """<!DOCTYPE html>
   .card{background:#1e2130;border:1px solid #2d3748;border-radius:12px;padding:20px}
   .card .num{font-size:2rem;font-weight:700;color:#f97316;line-height:1}
   .card .lbl{font-size:.8rem;color:#94a3b8;margin-top:6px}
+  .card-streak{background:linear-gradient(135deg,#1a2a1a,#1e2130);border:1px solid #22c55e;border-radius:12px;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px}
+  .card-streak .streak-num{font-size:3rem;font-weight:800;color:#22c55e;line-height:1;font-variant-numeric:tabular-nums;transition:color .3s}
+  .card-streak .streak-lbl{font-size:.8rem;color:#86efac;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .card-streak .streak-sub{font-size:.7rem;color:#4ade80;opacity:.7}
+  .card-streak .dots{display:flex;gap:4px;margin-top:4px}
+  .card-streak .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 1.4s ease-in-out infinite}
+  .card-streak .dot:nth-child(2){animation-delay:.2s}
+  .card-streak .dot:nth-child(3){animation-delay:.4s}
+  @keyframes pulse{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
   .panel{background:#1e2130;border:1px solid #2d3748;border-radius:12px;padding:20px}
@@ -54,6 +63,13 @@ HTML = """<!DOCTYPE html>
 </header>
 
 <main>
+  <!-- Contador de días completos -->
+  <div style="margin-bottom:16px">
+    <div class="card-streak" id="card-streak">
+      <div class="loading"><span class="spin"></span> Cargando...</div>
+    </div>
+  </div>
+
   <!-- Tarjetas resumen -->
   <div class="cards" id="cards">
     <div class="card"><div class="loading"><span class="spin"></span> Cargando...</div></div>
@@ -129,12 +145,36 @@ function tagTipo(tipo){
   return`<span class="tag tag-flujo">${tipo}</span>`;
 }
 
+function animateCount(el, target, duration=1200){
+  const start = performance.now();
+  const from  = parseInt(el.textContent) || 0;
+  function step(ts){
+    const p = Math.min((ts - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * ease);
+    if(p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function renderStreak(dias){
+  const el = document.getElementById('card-streak');
+  el.innerHTML = `
+    <div class="streak-num" id="streak-num">0</div>
+    <div class="streak-lbl">📅 Días con recolección completa</div>
+    <div class="streak-sub">3 cosechas al día: 06:00 · 14:00 · 22:00 h MX</div>
+    <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  `;
+  animateCount(document.getElementById('streak-num'), dias);
+}
+
 async function loadData(){
   document.getElementById('last-update').textContent='Actualizando...';
   try{
     const res = await fetch('/api/stats');
     const d   = await res.json();
     if(d.error)throw new Error(d.error);
+    renderStreak(d.dias_completos || 0);
     renderCards(d.resumen, d.por_tipo, d.flujo_resumen);
     renderTipo(d.por_tipo);
     renderHora(d.por_hora);

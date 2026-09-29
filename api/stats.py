@@ -106,6 +106,21 @@ def _get_stats() -> dict:
     dias = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
     por_dow = [{"dia": dias[d], "total": dow_count.get(d, 0)} for d in range(7)]
 
+    # ── Días con recolección completa (≥ 3 cosechas distintas) ──────
+    flujo_fechas = (
+        db.table("flujo_historico")
+        .select("fecha,hora_del_dia")
+        .not_.is_("fecha", "null")
+        .execute()
+    )
+    dias_horas: dict[str, set] = {}
+    for r in flujo_fechas.data:
+        f = r["fecha"]
+        h = r["hora_del_dia"]
+        if f and h is not None:
+            dias_horas.setdefault(f, set()).add(int(h))
+    dias_completos = sum(1 for horas in dias_horas.values() if len(horas) >= 3)
+
     # ── Últimos 25 incidentes ─────────────────────────────────────
     recientes = (
         db.table("incidentes_historico")
@@ -127,6 +142,7 @@ def _get_stats() -> dict:
 
     return {
         "resumen": {"total_incidentes": total_inc, "primer_dia": primer_dia},
+        "dias_completos": dias_completos,
         "por_tipo": por_tipo,
         "por_carretera": por_carretera,
         "por_hora": por_hora,
