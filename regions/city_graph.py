@@ -240,6 +240,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "leon":           "MEX-45",
         "zacatecas":      "MEX-45",
         "guadalajara":    "MEX-45",
+        "celaya":         "MEX-45D",
     },
     "durango": {
         "zacatecas":      "MEX-45",
@@ -283,6 +284,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "nogales":        "MEX-15",
         "agua_prieta":    "MEX-2",
         "mexicali":       "MEX-2",    # vía San Luis Río Colorado
+        "los_mochis":     "MEX-15",
     },
     "nogales": {
         "hermosillo":     "MEX-15",
@@ -363,6 +365,9 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "veracruz":       "MEX-150D",
         "tehuacan":       "MEX-190",
         "orizaba":        "MEX-150D",
+        "xalapa":         "MEX-140",
+        "morelia":        "MEX-15",
+        "cuernavaca":     "MEX-160",
     },
     "tehuacan": {
         "puebla":         "MEX-190",
@@ -375,6 +380,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "tuxpan":         "MEX-180",
         "coatzacoalcos":  "MEX-180D",
         "tehuacan":       "MEX-150",    # MEX-150 libre vía Córdoba-Orizaba
+        "orizaba":        "MEX-150D",
     },
     "xalapa": {
         "veracruz":       "MEX-140",
@@ -408,11 +414,13 @@ CITY_EDGES: dict[str, dict[str, str]] = {
         "coatzacoalcos":  "MEX-180",
         "campeche":       "MEX-186",
         "cd_carmen":      "MEX-180",
+        "tuxtla":         "MEX-195",
     },
     "campeche": {
         "villahermosa":   "MEX-186",
         "merida":         "MEX-180",
         "cd_carmen":      "MEX-261",
+        "chetumal":       "MEX-186",
     },
     "cd_carmen": {
         "villahermosa":   "MEX-180",
@@ -454,6 +462,7 @@ CITY_EDGES: dict[str, dict[str, str]] = {
     "pachuca": {
         "cdmx":           "MEX-85D",
         "ciudad_valles":  "MEX-85",
+        "tuxpan":         "MEX-130",
     },
     # ── Ciudades secundarias ───────────────────────────────────────
     "ensenada": {
@@ -750,7 +759,7 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "piedras_negras":  {"saltillo": 290, "monclova": 150, "nuevo_laredo": 270},
     "zacatecas":       {"san_luis_potosi": 190, "aguascalientes": 130,
                         "durango": 310, "torreon": 250},
-    "aguascalientes":  {"leon": 120, "zacatecas": 130, "guadalajara": 220},
+    "aguascalientes":  {"leon": 120, "zacatecas": 130, "guadalajara": 220, "celaya": 180},
     "durango":         {"zacatecas": 310, "torreon": 260, "chihuahua": 540,
                         "mazatlan": 310, "parral": 230},
     "chihuahua":       {"durango": 540, "ciudad_juarez": 370, "hermosillo": 590,
@@ -762,7 +771,7 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "cuauhtemoc":      {"chihuahua": 100, "nuevo_casas_grandes": 180},
     "nuevo_casas_grandes": {"cuauhtemoc": 180, "chihuahua": 330},
     "hermosillo":      {"chihuahua": 590, "culiacan": 420, "nogales": 280,
-                        "agua_prieta": 310, "mexicali": 720},
+                        "agua_prieta": 310, "mexicali": 720, "los_mochis": 490},
     "nogales":         {"hermosillo": 280},
     "agua_prieta":     {"hermosillo": 310, "ciudad_juarez": 310},
     "culiacan":        {"hermosillo": 420, "mazatlan": 230, "los_mochis": 210},
@@ -782,10 +791,11 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "manzanillo":      {"guadalajara": 290, "lazaro_cardenas": 220,
                         "colima": 45},
     "lazaro_cardenas": {"morelia": 340, "manzanillo": 220, "colima": 280, "uruapan": 220},
-    "puebla":          {"cdmx": 130, "veracruz": 250, "tehuacan": 120, "orizaba": 125},
+    "puebla":          {"cdmx": 130, "veracruz": 250, "tehuacan": 120, "orizaba": 125,
+                        "xalapa": 300, "morelia": 390, "cuernavaca": 250},
     "tehuacan":        {"puebla": 120, "oaxaca": 240, "veracruz": 250},
     "veracruz":        {"puebla": 250, "xalapa": 110, "tuxpan": 155,
-                        "coatzacoalcos": 300, "tehuacan": 250},
+                        "coatzacoalcos": 300, "tehuacan": 250, "orizaba": 125},
     "xalapa":          {"veracruz": 110, "puebla": 300},
     "tampico":         {"ciudad_victoria": 145, "ciudad_valles": 110,
                         "tuxpan": 165, "matamoros": 310},
@@ -793,8 +803,8 @@ EDGE_KM: dict[str, dict[str, int]] = {
     "ciudad_valles":   {"tampico": 110, "san_luis_potosi": 200, "pachuca": 480,
                         "ciudad_victoria": 175},
     "coatzacoalcos":   {"veracruz": 300, "villahermosa": 170, "oaxaca": 400},
-    "villahermosa":    {"coatzacoalcos": 170, "campeche": 440, "cd_carmen": 200},
-    "campeche":        {"villahermosa": 440, "merida": 190, "cd_carmen": 190},
+    "villahermosa":    {"coatzacoalcos": 170, "campeche": 440, "cd_carmen": 200, "tuxtla": 290},
+    "campeche":        {"villahermosa": 440, "merida": 190, "cd_carmen": 190, "chetumal": 530},
     "cd_carmen":       {"villahermosa": 200, "campeche": 190},
     "merida":          {"campeche": 190, "cancun": 320},
     "cancun":          {"merida": 320, "chetumal": 320},
