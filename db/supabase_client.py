@@ -226,48 +226,68 @@ def registrar_incidentes_historico(
     ).execute()
 
 
-# ── RCPN Noticias ──────────────────────────────────────────────────────────────
+# ── RCPN Noticias ─────────────────────────────────────────────────────────────
+# Usa incidentes_historico (ya existe) con fuente="GoogleNews-RCPN".
+# Reutiliza columnas: descripcion=titulo, carretera=link, destino=fuente_nombre,
+# origen=emoji, hora_incidente=fecha_str.
+# Dedup: (hash_contenido, fecha) donde fecha = fecha de publicación del artículo.
 
 def upsert_rcpn_noticias(noticias: list[dict]):
-    """Guarda/actualiza noticias RCPN. Upsert por hash para evitar duplicados."""
-    registros = [{
-        "hash":      n["hash"],
-        "titulo":    n["titulo"],
-        "link":      n.get("link", ""),
-        "fuente":    n.get("fuente", "Google News"),
-        "emoji":     n.get("emoji", "📰"),
-        "tipo":      n.get("tipo", "Noticia"),
-        "fecha_pub": n["dt"].isoformat(),
-        "fecha_str": n.get("fecha", ""),
-    } for n in noticias]
-    if registros:
-        _db().table("rcpn_noticias").upsert(registros, on_conflict="hash").execute()
+    """Guarda noticias RCPN en incidentes_historico. Dedup por (hash, fecha_publicacion)."""
+    if not noticias:
+        return
+    registros = []
+    for n in noticias:
+        dt_mx = n["dt"].astimezone(timezone(timedelta(hours=-6)))
+        registros.append({
+            "fecha":          dt_mx.date().isoformat(),
+            "dia_semana":     dt_mx.isoweekday() % 7,
+            "hora_del_dia":   dt_mx.hour,
+            "tipo":           n.get("tipo", "Noticia RCPN"),
+            "descripcion":    n["titulo"],
+            "carretera":      n.get("link", ""),
+            "origen":         n.get("emoji", "📰"),
+            "destino":        n.get("fuente", "Google News"),
+            "hora_incidente": n.get("fecha", ""),
+            "fuente":         "GoogleNews-RCPN",
+            "hash_contenido": (n["hash"] + "    ")[:16],
+            "severidad":      0,
+            "coords_lat":     None,
+            "coords_lon":     None,
+        })
+    _db().table("incidentes_historico").upsert(
+        registros,
+        on_conflict="hash_contenido,fecha",
+        ignore_duplicates=True,
+    ).execute()
 
 
 def get_rcpn_noticias_db(max_dias: int = 30) -> list[dict]:
-    """Lee noticias RCPN de Supabase (últimos max_dias días), más reciente primero."""
-    desde = (datetime.now(timezone.utc) - timedelta(days=max_dias)).isoformat()
+    """Lee noticias RCPN de incidentes_historico, más reciente primero."""
+    desde = (datetime.now(timezone.utc) - timedelta(days=max_dias)).date().isoformat()
     rows = (
-        _db().table("rcpn_noticias")
-        .select("*")
-        .gte("fecha_pub", desde)
-        .order("fecha_pub", desc=True)
+        _db().table("incidentes_historico")
+        .select("descripcion,carretera,destino,origen,hora_incidente,hash_contenido,fecha,tipo")
+        .eq("fuente", "GoogleNews-RCPN")
+        .gte("fecha", desde)
+        .order("fecha", desc=True)
         .limit(30)
         .execute()
     )
     noticias = []
     for r in (rows.data or []):
-        dt = datetime.fromisoformat(r["fecha_pub"])
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            dt = datetime.fromisoformat(r["fecha"]).replace(tzinfo=timezone.utc)
+        except Exception:
+            dt = datetime.now(timezone.utc)
         noticias.append({
-            "titulo": r["titulo"],
-            "link":   r.get("link", ""),
-            "fuente": r.get("fuente", "Google News"),
-            "emoji":  r.get("emoji", "📰"),
+            "titulo": r.get("descripcion", ""),
+            "link":   r.get("carretera", ""),
+            "fuente": r.get("destino", "Google News"),
+            "emoji":  r.get("origen", "📰"),
             "tipo":   r.get("tipo", "Noticia"),
-            "fecha":  r.get("fecha_str", ""),
+            "fecha":  r.get("hora_incidente", ""),
             "dt":     dt,
-            "hash":   r["hash"],
+            "hash":   r.get("hash_contenido", "").strip(),
         })
     return noticias
