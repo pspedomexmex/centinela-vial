@@ -24,13 +24,19 @@ DIAS_SEMANA   = 8    # umbral "esta semana"
 MAX_DIAS      = 30   # ventana total
 
 # ── Queries Google News ────────────────────────────────────────────────────────
-# Cada query apunta a un ángulo distinto para maximizar cobertura
+# Orden: de más amplio (mayor cobertura) a más específico.
+# Probado: query 1 = ~76 resultados, query 3 = ~18, query 2 = ~10.
 _GNEWS_QUERIES: list[tuple[str, str]] = [
-    ('"Resistencia Civil Pacífica Nacional"',                          "Google News"),
-    ('"Arturo Morales" (resistencia OR RCPN OR "justicia ciudadana")', "Google News"),
-    ('RCPN México (marcha OR manifestación OR plantón OR convocatoria)',"Google News"),
-    ('"resistencia civil" México (represión OR detenido OR agresión)',  "Google News"),
-    ('"Arturo Morales" OR RCPN site:proceso.com.mx OR site:jornada.com.mx OR site:sinembargo.mx', "Google News"),
+    # Amplio: captura TODO lo de resistencia civil pacífica en México 2026
+    ('resistencia civil pacífica México 2026',                                     "Google News"),
+    # Nombre exacto de la organización RCPN
+    ('"Resistencia Civil Pacífica Nacional"',                                       "Google News"),
+    # Arturo Morales + contexto de movimiento
+    ('"Arturo Morales" México resistencia OR marcha OR protesta OR plantón',        "Google News"),
+    # Acciones de movilización ciudadana
+    ('resistencia civil México marcha OR plantón OR manifestación OR movilización', "Google News"),
+    # Represión / confrontaciones contra movimientos civiles
+    ('resistencia civil México represión OR detenido OR agresión OR confrontación', "Google News"),
 ]
 
 # ── Cuentas X/Twitter vía Nitter ───────────────────────────────────────────────
