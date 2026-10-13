@@ -1490,6 +1490,58 @@ class TestRCPNParseGnews:
         assert len(self.fn(xml, max_days=99999)) == 2
 
 
+class TestRCPNExcluir:
+    def setup_method(self):
+        from sources.rcpn_monitor import _excluir
+        self.fn = _excluir
+
+    # ── Desastres naturales → siempre excluir ─────────────────────────────────
+    def test_huracan_excluido(self):
+        assert self.fn("Embajada de EEUU emite alerta máxima por el poderoso huracán Polo") is True
+
+    def test_tormenta_tropical_excluida(self):
+        assert self.fn("Tormenta tropical avanza hacia costas de Jalisco") is True
+
+    def test_ciclon_excluido(self):
+        assert self.fn("Ciclón categoría 3 amenaza el Pacífico mexicano") is True
+
+    # ── Morena/AMLO sin contexto de protesta → excluir ───────────────────────
+    def test_regeneracion_nacional_excluida(self):
+        assert self.fn("15 años del movimiento de regeneración nacional - El Diario de Sonora") is True
+
+    def test_amlo_discurso_excluido(self):
+        assert self.fn("Andrés Manuel presenta informe de gobierno ante seguidores") is True
+
+    def test_morena_celebra_excluida(self):
+        assert self.fn("Morena celebra su aniversario con mitin en el Zócalo") is True
+
+    def test_sheinbaum_excluida(self):
+        assert self.fn("Claudia Sheinbaum anuncia nuevos programas sociales") is True
+
+    # ── Morena/AMLO como blanco de protesta → conservar ──────────────────────
+    def test_marcha_contra_amlo_conservada(self):
+        assert self.fn("RCPN marcha contra AMLO en el Zócalo") is False
+
+    def test_protesta_contra_morena_conservada(self):
+        assert self.fn("Protesta ciudadana frente a sede de Morena en CDMX") is False
+
+    def test_resistencia_contra_4t_conservada(self):
+        assert self.fn("Resistencia civil exige cuentas a la 4T en manifestación") is False
+
+    # ── Noticias legítimas de resistencia civil → conservar ───────────────────
+    def test_palalia_conservada(self):
+        assert self.fn("Pagados por Palalia's Tours: 100 personas cerraron la Vía Atlixcáyotl") is False
+
+    def test_violencia_en_oaxaca_conservada(self):
+        assert self.fn("Noche de violencia en Oaxaca: balean palacio municipal") is False
+
+    def test_ataque_lecheria_conservado(self):
+        assert self.fn("Ataque armado en la Lechería-Texcoco deja dos muertos") is False
+
+    def test_marcha_rcpn_conservada(self):
+        assert self.fn("RCPN convoca marcha nacional para el sábado") is False
+
+
 class TestRCPNConstantes:
     def setup_method(self):
         import sources.rcpn_monitor as m

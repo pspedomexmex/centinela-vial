@@ -55,6 +55,48 @@ RCPN_ACCOUNTS: list[tuple[str, str]] = [
     ("JusticiaCiudadMx",  "Twitter/Justicia Ciudadana"),
 ]
 
+# ── Filtro de exclusión ───────────────────────────────────────────────────────
+# Noticias que NO son de resistencia civil aunque aparezcan en las queries.
+
+# Temas de Morena/AMLO como sujeto principal (no como blanco de protesta)
+_KW_MORENA = [
+    "regeneración nacional", "movimiento de regeneración",
+    "andrés manuel", "lópez obrador", "amlo",
+    "cuarta transformación", "4t ", "4t.",
+    "morena gana", "morena triunfa", "morena celebra", "morena conmemora",
+    "claudia sheinbaum",
+]
+
+# Desastres naturales sin contexto de resistencia civil
+_KW_DESASTRE = [
+    "huracán", "hurricane", "tormenta tropical", "ciclón",
+    "terremoto", "sismo de", "alerta máxima por",
+]
+
+# Presencia de estas palabras salva la nota aunque tenga keywords de arriba
+_KW_RESISTENCIA = [
+    "resistencia", "marcha", "protesta", "plantón", "manifestación",
+    "rcpn", "bloqueo", "cierre", "convocatoria", "oposición ciudadana",
+    "arturo morales",
+]
+
+
+def _excluir(titulo: str) -> bool:
+    """True = descartar la noticia."""
+    t = titulo.lower()
+    tiene_resistencia = any(k in t for k in _KW_RESISTENCIA)
+
+    # Siempre descartar desastres naturales (huracán, sismo, etc.)
+    if any(k in t for k in _KW_DESASTRE):
+        return True
+
+    # Descartar si el tema es Morena/AMLO y NO hay contexto de protesta/resistencia
+    if any(k in t for k in _KW_MORENA) and not tiene_resistencia:
+        return True
+
+    return False
+
+
 # ── Clasificación por tipo de evento ──────────────────────────────────────────
 _CLASIFICACION: list[tuple[tuple[str, str], list[str]]] = [
     (("🚨", "Represión"),      ["detenido", "detención", "represión", "agresión",
@@ -228,6 +270,8 @@ async def get_rcpn_noticias() -> list[dict]:
 
     for lote in [*gnews_lotes, nitter_items]:
         for item in lote:
+            if _excluir(item["title"]):
+                continue
             key = item["title"][:50]
             if key in seen:
                 continue
