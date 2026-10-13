@@ -1490,6 +1490,36 @@ class TestRCPNParseGnews:
         assert len(self.fn(xml, max_days=99999)) == 2
 
 
+class TestRCPNFiltroRuido:
+    def setup_method(self):
+        from sources.rcpn_monitor import _es_ruido
+        self.fn = _es_ruido
+
+    def test_balean_es_ruido(self):
+        assert self.fn("Noche de violencia en Oaxaca: balean palacio municipal") is True
+
+    def test_ataque_armado_es_ruido(self):
+        assert self.fn("Ataque armado en Lechería-Texcoco deja dos muertos") is True
+
+    def test_sicario_es_ruido(self):
+        assert self.fn("Matan a sicario en Tamaulipas") is True
+
+    def test_narco_es_ruido(self):
+        assert self.fn("Narcotráfico: cae célula criminal en Jalisco") is True
+
+    def test_marcha_rcpn_no_es_ruido(self):
+        assert self.fn("RCPN convoca marcha al Zócalo este sábado") is False
+
+    def test_palalia_no_es_ruido(self):
+        assert self.fn("Pagados por Palalia's Tours: 100 personas cerraron la Vía Atlixcáyotl") is False
+
+    def test_bloqueo_civil_no_es_ruido(self):
+        assert self.fn("Resistencia civil pacífica bloquea vía en protesta contra el INE") is False
+
+    def test_detencion_en_marcha_no_es_ruido(self):
+        assert self.fn("Detienen a activista durante plantón de resistencia civil en CDMX") is False
+
+
 class TestRCPNConstantes:
     def setup_method(self):
         import sources.rcpn_monitor as m

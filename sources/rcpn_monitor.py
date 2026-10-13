@@ -24,20 +24,34 @@ DIAS_SEMANA   = 8    # umbral "esta semana"
 MAX_DIAS      = 30   # ventana total
 
 # ── Queries Google News ────────────────────────────────────────────────────────
-# Orden: de más amplio (mayor cobertura) a más específico.
-# Probado: query 1 = ~76 resultados, query 3 = ~18, query 2 = ~10.
+# Estrategia: primero queries exactas (alta precisión), luego amplias (más cobertura).
+# Query 2 ("Resistencia Civil Pacífica Nacional") devuelve la noticia de Palalia's Tours.
 _GNEWS_QUERIES: list[tuple[str, str]] = [
-    # Amplio: captura TODO lo de resistencia civil pacífica en México 2026
-    ('resistencia civil pacífica México 2026',                                     "Google News"),
-    # Nombre exacto de la organización RCPN
-    ('"Resistencia Civil Pacífica Nacional"',                                       "Google News"),
-    # Arturo Morales + contexto de movimiento
-    ('"Arturo Morales" México resistencia OR marcha OR protesta OR plantón',        "Google News"),
-    # Acciones de movilización ciudadana
-    ('resistencia civil México marcha OR plantón OR manifestación OR movilización', "Google News"),
-    # Represión / confrontaciones contra movimientos civiles
-    ('resistencia civil México represión OR detenido OR agresión OR confrontación', "Google News"),
+    # Nombre exacto — la query más confiable y precisa
+    ('"Resistencia Civil Pacífica Nacional"',                                          "Google News"),
+    # Líder del movimiento con contexto civil
+    ('"Arturo Morales" México resistencia OR marcha OR plantón OR convocatoria',       "Google News"),
+    # Frase exacta + acción ciudadana (captura bloqueos, cierres, marchas RCPN)
+    ('"resistencia civil pacífica" México bloqueo OR marcha OR plantón OR cierre',     "Google News"),
+    # Amplio: cualquier movilización de resistencia civil en México 2026
+    ('resistencia civil pacífica México 2026 manifestantes OR ciudadanos OR convocatoria', "Google News"),
+    # RCPN acrónimo + acción
+    ('RCPN México resistencia civil OR marcha OR plantón OR Arturo Morales',           "Google News"),
 ]
+
+# ── Filtro de ruido ───────────────────────────────────────────────────────────
+# Palabras que indican nota policiaca/criminal sin relación con el movimiento RCPN
+_PALABRAS_RUIDO = [
+    "balean", "baleado", "balearon", "baleó",
+    "sicario", "sicarios", "ejecutaron", "ejecutado",
+    "narcotráfico", "cártel", "crimen organizado",
+    "ataque armado", "rafagueo", "explosión",
+]
+
+
+def _es_ruido(titulo: str) -> bool:
+    t = titulo.lower()
+    return any(k in t for k in _PALABRAS_RUIDO)
 
 # ── Cuentas X/Twitter vía Nitter ───────────────────────────────────────────────
 NITTER_INSTANCES = [
@@ -227,6 +241,9 @@ async def get_rcpn_noticias() -> list[dict]:
 
     for lote in [*gnews_lotes, nitter_items]:
         for item in lote:
+            # Descartar notas de crimen organizado sin relación con RCPN
+            if _es_ruido(item["title"]):
+                continue
             key = item["title"][:50]
             if key in seen:
                 continue
@@ -245,4 +262,4 @@ async def get_rcpn_noticias() -> list[dict]:
             })
 
     noticias.sort(key=lambda x: x["dt"], reverse=True)
-    return noticias[:25]
+    return noticias[:30]
