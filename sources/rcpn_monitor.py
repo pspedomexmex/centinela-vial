@@ -42,20 +42,9 @@ _GNEWS_QUERIES: list[tuple[str, str]] = [
 ]
 
 
-# ── Cuentas X/Twitter vía Nitter ───────────────────────────────────────────────
-NITTER_INSTANCES = [
-    "https://nitter.poast.org",
-    "https://nitter.privacydev.net",
-    "https://nitter.1d4.us",
-]
-
 # Cuentas de RCPN y movimientos civiles afines en México
-RCPN_ACCOUNTS: list[tuple[str, str]] = [
-    ("RCPNacional",       "Twitter/RCPN"),
-    ("ArturoMoralesZ",    "Twitter/Arturo Morales"),
-    ("ResistenciaCivMx",  "Twitter/Resistencia Civil"),
-    ("JusticiaCiudadMx",  "Twitter/Justicia Ciudadana"),
-]
+# (placeholder — activar cuando RCPN abra canal de Twitter/Telegram)
+RCPN_ACCOUNTS: list[tuple[str, str]] = []
 
 # ── Filtro de exclusión ───────────────────────────────────────────────────────
 # Noticias que NO son de resistencia civil aunque aparezcan en las queries.
@@ -211,7 +200,7 @@ async def _fetch_gnews(client: httpx.AsyncClient,
         r = await client.get(
             GNEWS_URL,
             params={**GNEWS_PARAMS, "q": query},
-            timeout=12,
+            timeout=6,
             follow_redirects=True,
         )
         r.raise_for_status()
@@ -220,57 +209,23 @@ async def _fetch_gnews(client: httpx.AsyncClient,
         return []
 
 
-async def _fetch_nitter_cuenta(client: httpx.AsyncClient,
-                               instance: str, cuenta: str,
-                               fuente_label: str) -> list[dict]:
-    try:
-        r = await client.get(
-            f"{instance}/{cuenta}/rss", timeout=7, follow_redirects=True
-        )
-        if r.status_code != 200:
-            return []
-        return _parse_nitter(r.text, cuenta, fuente_label)
-    except Exception:
-        return []
-
-
-async def _fetch_nitter_todas() -> list[dict]:
-    """Intenta cada instancia Nitter en paralelo para todas las cuentas RCPN."""
-    for instance in NITTER_INSTANCES:
-        async with httpx.AsyncClient() as client:
-            results = await asyncio.gather(*[
-                _fetch_nitter_cuenta(client, instance, cuenta, label)
-                for cuenta, label in RCPN_ACCOUNTS
-            ])
-        # Si al menos una cuenta respondió, usar esta instancia
-        if any(results):
-            items = []
-            for batch in results:
-                items.extend(batch)
-            return items
-    return []
-
-
 # ── Función principal ──────────────────────────────────────────────────────────
 
 async def get_rcpn_noticias() -> list[dict]:
     """
-    Consulta Google News (5 queries) + Nitter (cuentas RCPN) en paralelo.
-    Retorna lista deduplicada ≤25 items, más reciente primero.
+    Consulta Google News con 6 queries en paralelo.
+    Retorna lista deduplicada ≤30 items, más reciente primero.
     Cada item: {titulo, link, fuente, emoji, tipo, fecha, hash}
     """
     async with httpx.AsyncClient() as client:
-        gnews_tasks = [
+        gnews_lotes = await asyncio.gather(*[
             _fetch_gnews(client, q, label) for q, label in _GNEWS_QUERIES
-        ]
-        gnews_lotes = await asyncio.gather(*gnews_tasks)
-
-    nitter_items = await _fetch_nitter_todas()
+        ])
 
     seen: set[str] = set()
     noticias: list[dict] = []
 
-    for lote in [*gnews_lotes, nitter_items]:
+    for lote in gnews_lotes:
         for item in lote:
             if _excluir(item["title"]):
                 continue

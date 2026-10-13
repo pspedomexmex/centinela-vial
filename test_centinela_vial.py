@@ -1566,9 +1566,5 @@ class TestRCPNConstantes:
     def test_clasificacion_tiene_entradas(self):
         assert len(self.m._CLASIFICACION) >= 4
 
-    def test_hay_cuentas_nitter(self):
-        assert len(self.m.RCPN_ACCOUNTS) >= 2
-
-    def test_cuentas_tienen_label(self):
-        for cuenta, label in self.m.RCPN_ACCOUNTS:
-            assert cuenta.strip() and label.strip()
+    def test_rcpn_accounts_es_lista(self):
+        assert isinstance(self.m.RCPN_ACCOUNTS, list)
