@@ -627,7 +627,7 @@ async def cmd_zona(bot: Bot, chat_id: int):
 
 
 async def cmd_rcpn(bot: Bot, chat_id: int):
-    await bot.send_message(chat_id=chat_id, text="🔍 Buscando noticias RCPN (últimos 15 días)...")
+    await bot.send_message(chat_id=chat_id, text="🔍 Buscando noticias RCPN (últimos 30 días)...")
 
     from sources.rcpn_monitor import get_rcpn_noticias, DIAS_RECIENTE, DIAS_SEMANA
     from datetime import datetime, timezone, timedelta
@@ -643,8 +643,8 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
             parse_mode=ParseMode.MARKDOWN,
             text=(
                 "📰 *RCPN — Sin resultados*\n"
-                "_No se encontraron noticias en los últimos 15 días._\n\n"
-                "_Fuente: Google News_"
+                "_No se encontraron noticias en los últimos 30 días._\n\n"
+                "_Fuentes: Google News · Twitter/X_"
             ),
         )
         return
@@ -653,25 +653,35 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
     esta_sem   = [n for n in noticias if DIAS_RECIENTE <= (now - n["dt"]).days < DIAS_SEMANA]
     mas_viejas = [n for n in noticias if (now - n["dt"]).days >= DIAS_SEMANA]
 
+    fuentes_vistas: set[str] = {n["fuente"] for n in noticias}
+
     lines = [
         "📰 *Resistencia Civil Pacífica Nacional*",
-        f"_últimos 15 días · {hora_mx}_\n",
+        f"_últimos 30 días · {hora_mx}_\n",
     ]
 
-    def _bloque(encabezado: str, grupo: list[dict], max_items: int = 6):
+    def _linea(n: dict) -> str:
+        titulo = n["titulo"] if len(n["titulo"]) <= 100 else n["titulo"][:97] + "…"
+        # Escapar caracteres que rompen Markdown en título e URL
+        titulo_safe = titulo.replace("[", "(").replace("]", ")")
+        if n.get("link"):
+            return f"{n['emoji']} [{titulo_safe}]({n['link']})\n   _📰 {n['fuente']} · {n['fecha']}_"
+        return f"{n['emoji']} {titulo_safe}\n   _📰 {n['fuente']} · {n['fecha']}_"
+
+    def _bloque(encabezado: str, grupo: list[dict], max_items: int = 5):
         if not grupo:
             return
         lines.append(f"*{encabezado}*")
         for n in grupo[:max_items]:
-            titulo = n["titulo"] if len(n["titulo"]) <= 110 else n["titulo"][:107] + "…"
-            lines.append(f"{n['emoji']} {titulo}")
+            lines.append(_linea(n))
         lines.append("")
 
     _bloque("🕐 Últimas 48 horas", recientes)
     _bloque("📅 Esta semana", esta_sem)
-    _bloque("🗓 Hace 7–15 días", mas_viejas)
+    _bloque("🗓 Hace 8–30 días", mas_viejas)
 
-    lines.append(f"_📡 Google News · {len(noticias)} noticias encontradas_")
+    fuentes_txt = " · ".join(sorted(fuentes_vistas)[:4])
+    lines.append(f"_📡 {fuentes_txt} · {len(noticias)} noticias_")
 
     await bot.send_message(
         chat_id=chat_id,

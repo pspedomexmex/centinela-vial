@@ -1435,46 +1435,59 @@ class TestRCPNClasificar:
         assert emoji == "📰"
 
 
-class TestRCPNParseItems:
+class TestRCPNParseGnews:
     def setup_method(self):
-        from sources.rcpn_monitor import _parse_items
-        self.fn = _parse_items
+        from sources.rcpn_monitor import _parse_gnews
+        self.fn = _parse_gnews
 
-    def _rss(self, items: list[tuple[str, str]]) -> str:
+    def _rss(self, items: list[tuple]) -> str:
         body = ""
-        for title, pub in items:
-            body += f"<item><title>{title}</title><pubDate>{pub}</pubDate></item>"
+        for t, pub, link, fuente in items:
+            src = f'<source url="http://ejemplo.com">{fuente}</source>' if fuente else ""
+            body += (f"<item><title>{t}</title>"
+                     f"<pubDate>{pub}</pubDate>"
+                     f"<link>{link}</link>{src}</item>")
         return f"<rss><channel>{body}</channel></rss>"
 
+    def _item(self, title="RCPN marcha", pub="Mon, 15 Jan 2099 12:00:00 +0000",
+              link="https://ejemplo.com/nota", fuente="El Universal"):
+        return (title, pub, link, fuente)
+
     def test_extrae_titulo(self):
-        xml = self._rss([("RCPN convoca marcha", "Mon, 15 Jan 2099 12:00:00 +0000")])
+        xml = self._rss([self._item()])
         result = self.fn(xml, max_days=99999)
-        assert len(result) == 1
-        assert result[0]["title"] == "RCPN convoca marcha"
+        assert result[0]["title"] == "RCPN marcha"
+
+    def test_extrae_link(self):
+        xml = self._rss([self._item(link="https://proceso.com.mx/nota")])
+        result = self.fn(xml, max_days=99999)
+        assert result[0]["link"] == "https://proceso.com.mx/nota"
+
+    def test_extrae_fuente(self):
+        xml = self._rss([self._item(fuente="Proceso")])
+        result = self.fn(xml, max_days=99999)
+        assert result[0]["fuente"] == "Proceso"
+
+    def test_item_sin_fuente_usa_default(self):
+        xml = self._rss([("Noticia", "Mon, 15 Jan 2099 12:00:00 +0000", "http://x.com", "")])
+        result = self.fn(xml, fuente_default="Google News", max_days=99999)
+        assert result[0]["fuente"] == "Google News"
 
     def test_filtra_noticias_antiguas(self):
-        xml = self._rss([("Noticia vieja", "Mon, 01 Jan 2020 12:00:00 +0000")])
-        result = self.fn(xml, max_days=1)
-        assert result == []
+        xml = self._rss([self._item(pub="Mon, 01 Jan 2020 12:00:00 +0000")])
+        assert self.fn(xml, max_days=1) == []
 
     def test_xml_invalido_retorna_vacio(self):
         assert self.fn("esto no es xml") == []
 
-    def test_sin_items_retorna_vacio(self):
-        assert self.fn("<rss><channel></channel></rss>") == []
-
     def test_items_tienen_dt(self):
-        xml = self._rss([("RCPN noticias", "Mon, 15 Jan 2099 12:00:00 +0000")])
+        xml = self._rss([self._item()])
         result = self.fn(xml, max_days=99999)
         assert "dt" in result[0]
 
     def test_multiples_items(self):
-        xml = self._rss([
-            ("Noticia 1", "Mon, 15 Jan 2099 12:00:00 +0000"),
-            ("Noticia 2", "Mon, 15 Jan 2099 13:00:00 +0000"),
-        ])
-        result = self.fn(xml, max_days=99999)
-        assert len(result) == 2
+        xml = self._rss([self._item(title="N1"), self._item(title="N2")])
+        assert len(self.fn(xml, max_days=99999)) == 2
 
 
 class TestRCPNConstantes:
@@ -1488,15 +1501,22 @@ class TestRCPNConstantes:
     def test_dias_semana_menor_que_max(self):
         assert self.m.DIAS_SEMANA < self.m.MAX_DIAS
 
-    def test_max_dias_es_15(self):
-        assert self.m.MAX_DIAS == 15
+    def test_max_dias_es_30(self):
+        assert self.m.MAX_DIAS == 30
 
-    def test_hay_tres_queries(self):
-        assert len(self.m._QUERIES) == 3
+    def test_hay_cinco_queries(self):
+        assert len(self.m._GNEWS_QUERIES) == 5
 
     def test_queries_no_vacias(self):
-        for q in self.m._QUERIES:
-            assert q.strip(), "Query vacía en _QUERIES"
+        for q, _ in self.m._GNEWS_QUERIES:
+            assert q.strip(), "Query vacía en _GNEWS_QUERIES"
 
     def test_clasificacion_tiene_entradas(self):
         assert len(self.m._CLASIFICACION) >= 4
+
+    def test_hay_cuentas_nitter(self):
+        assert len(self.m.RCPN_ACCOUNTS) >= 2
+
+    def test_cuentas_tienen_label(self):
+        for cuenta, label in self.m.RCPN_ACCOUNTS:
+            assert cuenta.strip() and label.strip()
