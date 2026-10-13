@@ -1387,3 +1387,116 @@ class TestMexicoRegionsFunciones:
         for key, data in self.regions.items():
             for abr in data["abreviaturas"]:
                 assert abr.lower() in self.mapa, f"Falta abreviatura: {abr}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  20. RCPN Monitor — funciones puras
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRCPNClasificar:
+    def setup_method(self):
+        from sources.rcpn_monitor import _clasificar
+        self.fn = _clasificar
+
+    def test_marcha_es_movilizacion(self):
+        emoji, tipo = self.fn("RCPN convoca marcha para el sábado")
+        assert tipo == "Movilización"
+        assert emoji == "🚶"
+
+    def test_plantón_es_movilizacion(self):
+        _, tipo = self.fn("Plantón frente al INE organizado por RCPN")
+        assert tipo == "Movilización"
+
+    def test_demanda_es_legal(self):
+        _, tipo = self.fn("Arturo Morales presenta demanda ante tribunal")
+        assert tipo == "Legal/Político"
+
+    def test_fraude_es_legal(self):
+        _, tipo = self.fn("Denuncian fraude electoral en Michoacán")
+        assert tipo == "Legal/Político"
+
+    def test_detencion_es_represion(self):
+        emoji, tipo = self.fn("Detenidos activistas de resistencia civil")
+        assert tipo == "Represión"
+        assert emoji == "🚨"
+
+    def test_declaracion(self):
+        _, tipo = self.fn("Arturo Morales declaró que continuarán las acciones")
+        assert tipo == "Declaración"
+
+    def test_logro(self):
+        emoji, tipo = self.fn("Victoria para RCPN: tribunal revocó acuerdo")
+        assert tipo == "Logro"
+        assert emoji == "✅"
+
+    def test_noticia_sin_clasificar(self):
+        emoji, tipo = self.fn("Texto genérico sin palabras clave específicas")
+        assert tipo == "Noticia"
+        assert emoji == "📰"
+
+
+class TestRCPNParseItems:
+    def setup_method(self):
+        from sources.rcpn_monitor import _parse_items
+        self.fn = _parse_items
+
+    def _rss(self, items: list[tuple[str, str]]) -> str:
+        body = ""
+        for title, pub in items:
+            body += f"<item><title>{title}</title><pubDate>{pub}</pubDate></item>"
+        return f"<rss><channel>{body}</channel></rss>"
+
+    def test_extrae_titulo(self):
+        xml = self._rss([("RCPN convoca marcha", "Mon, 15 Jan 2099 12:00:00 +0000")])
+        result = self.fn(xml, max_days=99999)
+        assert len(result) == 1
+        assert result[0]["title"] == "RCPN convoca marcha"
+
+    def test_filtra_noticias_antiguas(self):
+        xml = self._rss([("Noticia vieja", "Mon, 01 Jan 2020 12:00:00 +0000")])
+        result = self.fn(xml, max_days=1)
+        assert result == []
+
+    def test_xml_invalido_retorna_vacio(self):
+        assert self.fn("esto no es xml") == []
+
+    def test_sin_items_retorna_vacio(self):
+        assert self.fn("<rss><channel></channel></rss>") == []
+
+    def test_items_tienen_dt(self):
+        xml = self._rss([("RCPN noticias", "Mon, 15 Jan 2099 12:00:00 +0000")])
+        result = self.fn(xml, max_days=99999)
+        assert "dt" in result[0]
+
+    def test_multiples_items(self):
+        xml = self._rss([
+            ("Noticia 1", "Mon, 15 Jan 2099 12:00:00 +0000"),
+            ("Noticia 2", "Mon, 15 Jan 2099 13:00:00 +0000"),
+        ])
+        result = self.fn(xml, max_days=99999)
+        assert len(result) == 2
+
+
+class TestRCPNConstantes:
+    def setup_method(self):
+        import sources.rcpn_monitor as m
+        self.m = m
+
+    def test_dias_reciente_menor_que_semana(self):
+        assert self.m.DIAS_RECIENTE < self.m.DIAS_SEMANA
+
+    def test_dias_semana_menor_que_max(self):
+        assert self.m.DIAS_SEMANA < self.m.MAX_DIAS
+
+    def test_max_dias_es_15(self):
+        assert self.m.MAX_DIAS == 15
+
+    def test_hay_tres_queries(self):
+        assert len(self.m._QUERIES) == 3
+
+    def test_queries_no_vacias(self):
+        for q in self.m._QUERIES:
+            assert q.strip(), "Query vacía en _QUERIES"
+
+    def test_clasificacion_tiene_entradas(self):
+        assert len(self.m._CLASIFICACION) >= 4

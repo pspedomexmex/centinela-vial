@@ -50,6 +50,7 @@ async def cmd_start(bot: Bot, chat_id: int):
             "  Ej: `/viaje CDMX - Monterrey`\n\n"
             "• `/escaneo` — Panorama vial nacional (27 tramos)\n"
             "• `/zona` — Corredor laboral EdoMex→CDMX (Neza, Ecatepec, Coacalco, Tlalnepantla, Tecámac, Tultitlán, Cuautitlán)\n"
+            "• `/rcpn` — Noticias Resistencia Civil Pacífica Nacional (últimos 15 días)\n"
             "• `/alertas` — Incidentes en tu ruta ahora\n"
             "• `/ruta` — Desglose de tramos, km y tiempo\n"
             "• `/trafico` — Estado del tráfico\n"
@@ -617,6 +618,60 @@ async def cmd_zona(bot: Bot, chat_id: int):
         lines.append("")
 
     lines.append(f"_📡 TomTom Traffic · Centinela Vial_")
+
+    await bot.send_message(
+        chat_id=chat_id,
+        parse_mode=ParseMode.MARKDOWN,
+        text="\n".join(lines),
+    )
+
+
+async def cmd_rcpn(bot: Bot, chat_id: int):
+    await bot.send_message(chat_id=chat_id, text="🔍 Buscando noticias RCPN (últimos 15 días)...")
+
+    from sources.rcpn_monitor import get_rcpn_noticias, DIAS_RECIENTE, DIAS_SEMANA
+    from datetime import datetime, timezone, timedelta
+
+    noticias = await get_rcpn_noticias()
+
+    now     = datetime.now(timezone.utc)
+    hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%d %b · %H:%M h")
+
+    if not noticias:
+        await bot.send_message(
+            chat_id=chat_id,
+            parse_mode=ParseMode.MARKDOWN,
+            text=(
+                "📰 *RCPN — Sin resultados*\n"
+                "_No se encontraron noticias en los últimos 15 días._\n\n"
+                "_Fuente: Google News_"
+            ),
+        )
+        return
+
+    recientes  = [n for n in noticias if (now - n["dt"]).days <  DIAS_RECIENTE]
+    esta_sem   = [n for n in noticias if DIAS_RECIENTE <= (now - n["dt"]).days < DIAS_SEMANA]
+    mas_viejas = [n for n in noticias if (now - n["dt"]).days >= DIAS_SEMANA]
+
+    lines = [
+        "📰 *Resistencia Civil Pacífica Nacional*",
+        f"_últimos 15 días · {hora_mx}_\n",
+    ]
+
+    def _bloque(encabezado: str, grupo: list[dict], max_items: int = 6):
+        if not grupo:
+            return
+        lines.append(f"*{encabezado}*")
+        for n in grupo[:max_items]:
+            titulo = n["titulo"] if len(n["titulo"]) <= 110 else n["titulo"][:107] + "…"
+            lines.append(f"{n['emoji']} {titulo}")
+        lines.append("")
+
+    _bloque("🕐 Últimas 48 horas", recientes)
+    _bloque("📅 Esta semana", esta_sem)
+    _bloque("🗓 Hace 7–15 días", mas_viejas)
+
+    lines.append(f"_📡 Google News · {len(noticias)} noticias encontradas_")
 
     await bot.send_message(
         chat_id=chat_id,
