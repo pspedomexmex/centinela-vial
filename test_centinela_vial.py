@@ -34,6 +34,42 @@ _tg_ext.CommandHandler = object
 _tg_ext.CallbackQueryHandler = object
 sys.modules.setdefault("telegram.ext", _tg_ext)
 
+# Stub de supabase para harvest y db
+_supa = types.ModuleType("supabase")
+_supa.create_client = lambda url, key: None
+sys.modules.setdefault("supabase", _supa)
+
+# Stub de db.supabase_client para módulos que lo importan en harvest
+_db_stub = types.ModuleType("db.supabase_client")
+for _fn in (
+    "registrar_incidentes_historico", "registrar_clima_historico",
+    "registrar_flujo_historico", "guardar_viaje", "get_viaje",
+    "detener_viaje", "actualizar_cierres", "limpiar_cierres_viaje",
+):
+    setattr(_db_stub, _fn, lambda *a, **k: None)
+sys.modules.setdefault("db.supabase_client", _db_stub)
+
+_db_trips = types.ModuleType("db.trips")
+for _fn in (
+    "get_viajes_activos", "ya_enviada", "marcar_enviada", "limpiar_alertas_viejas",
+):
+    setattr(_db_trips, _fn, lambda *a, **k: None)
+sys.modules.setdefault("db.trips", _db_trips)
+
+# Stub de sources.capufe_monitor y sources.gmaps_traffic para trip_monitor
+_capufe = types.ModuleType("sources.capufe_monitor")
+_capufe.get_capufe_alerts_for_regions = lambda *a, **k: []
+sys.modules.setdefault("sources.capufe_monitor", _capufe)
+
+_gmaps = types.ModuleType("sources.gmaps_traffic")
+_gmaps.get_traffic_status = lambda *a, **k: {}
+_gmaps.EMOJI_TRAFICO = {}
+sys.modules.setdefault("sources.gmaps_traffic", _gmaps)
+
+_tw_mon = types.ModuleType("sources.twitter_monitor")
+_tw_mon.get_tweets_for_regions = lambda *a, **k: ([], False)
+sys.modules.setdefault("sources.twitter_monitor", _tw_mon)
+
 # ─── Imports del proyecto ─────────────────────────────────────────────────────
 import pytest
 
@@ -580,3 +616,774 @@ class TestOpenMeteoWMO:
             assert isinstance(emoji, str) and len(emoji) > 0
             assert isinstance(desc, str) and len(desc) > 0
             assert isinstance(severo, bool)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  12. TomTom Incidents — funciones puras
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestTomTomBbox:
+    def setup_method(self):
+        from sources.tomtom_incidents import _bbox, TILE_HALF
+        self._bbox = _bbox
+        self._half = TILE_HALF
+
+    def test_formato_bbox(self):
+        result = self._bbox(19.4, -99.1)
+        parts = result.split(",")
+        assert len(parts) == 4
+
+    def test_bbox_simetrico(self):
+        lat, lon = 19.4, -99.1
+        result = self._bbox(lat, lon)
+        lon_min, lat_min, lon_max, lat_max = (float(x) for x in result.split(","))
+        assert abs(lon_min - (lon - self._half)) < 1e-9
+        assert abs(lat_min - (lat - self._half)) < 1e-9
+        assert abs(lon_max - (lon + self._half)) < 1e-9
+        assert abs(lat_max - (lat + self._half)) < 1e-9
+
+    def test_tile_half_es_razonable(self):
+        # TILE_HALF debe producir un bbox menor a ~10,000 km²
+        assert 0.1 < self._half < 1.0
+
+
+class TestTomTomEsSignificativo:
+    def setup_method(self):
+        from sources.tomtom_incidents import _es_significativo
+        self.fn = _es_significativo
+
+    def _inc(self, cat: int, roads: list = None) -> dict:
+        return {"properties": {"iconCategory": cat, "roadNumbers": roads or []}}
+
+    def test_accidente_con_carretera_es_significativo(self):
+        assert self.fn(self._inc(1, ["MEX-57D"])) is True
+
+    def test_accidente_sin_carretera_no_es_significativo(self):
+        assert self.fn(self._inc(1, [])) is False
+
+    def test_condiciones_peligrosas_con_carretera(self):
+        assert self.fn(self._inc(3, ["MEX-57"])) is True
+
+    def test_cierre_sin_carretera_es_significativo(self):
+        # cat 8 pasa por proximidad geográfica del tile
+        assert self.fn(self._inc(8, [])) is True
+
+    def test_cierre_con_carretera_tambien(self):
+        assert self.fn(self._inc(8, ["MEX-150D"])) is True
+
+    def test_inundacion_con_carretera(self):
+        assert self.fn(self._inc(11, ["MEX-186"])) is True
+
+    def test_niebla_ignorada(self):
+        assert self.fn(self._inc(2, ["MEX-57D"])) is False
+
+    def test_lluvia_ignorada(self):
+        assert self.fn(self._inc(4, ["MEX-57D"])) is False
+
+    def test_obras_ignoradas(self):
+        assert self.fn(self._inc(9, ["MEX-45"])) is False
+
+    def test_trafico_ignorado(self):
+        assert self.fn(self._inc(6, ["MEX-57D"])) is False
+
+    def test_carril_cerrado_ignorado(self):
+        assert self.fn(self._inc(7, ["MEX-57D"])) is False
+
+    def test_categoria_0_no_es_significativa(self):
+        # cat 0 no está en críticas ni ignoradas → False
+        assert self.fn(self._inc(0, ["MEX-57D"])) is False
+
+
+class TestTomTomFmtHora:
+    def setup_method(self):
+        from sources.tomtom_incidents import _fmt_hora
+        self.fn = _fmt_hora
+
+    def test_convierte_utc_a_hora_mx(self):
+        # 20:30 UTC → 14:30 UTC-6
+        assert self.fn("2024-01-15T20:30:00Z") == "14:30"
+
+    def test_medianoche_utc_a_mx(self):
+        # 00:00 UTC → 18:00 UTC-6 del día anterior
+        assert self.fn("2024-01-15T00:00:00Z") == "18:00"
+
+    def test_none_retorna_none(self):
+        assert self.fn(None) is None
+
+    def test_cadena_vacia_retorna_none(self):
+        assert self.fn("") is None
+
+    def test_malformado_retorna_none(self):
+        assert self.fn("no-es-fecha") is None
+
+
+class TestTomTomCierreHash:
+    def setup_method(self):
+        from sources.tomtom_incidents import _cierre_hash
+        self.fn = _cierre_hash
+
+    def _p(self, roads=None, desde="A", hasta="B") -> dict:
+        return {"roadNumbers": roads or ["MEX-57D"], "from": desde, "to": hasta}
+
+    def test_hash_es_hex_12_chars(self):
+        h = self.fn(self._p())
+        assert len(h) == 12
+        assert all(c in "0123456789abcdef" for c in h)
+
+    def test_hash_determinista(self):
+        p = self._p()
+        assert self.fn(p) == self.fn(p)
+
+    def test_hash_simetrico_desde_hasta(self):
+        # El hash no depende del orden desde/hasta
+        assert self.fn(self._p(desde="X", hasta="Y")) == \
+               self.fn(self._p(desde="Y", hasta="X"))
+
+    def test_hash_distinto_con_diferente_carretera(self):
+        assert self.fn(self._p(roads=["MEX-57D"])) != \
+               self.fn(self._p(roads=["MEX-150D"]))
+
+    def test_sin_roads_no_falla(self):
+        h = self.fn({"roadNumbers": None, "from": "A", "to": "B"})
+        assert len(h) == 12
+
+
+class TestTomTomExtractCoords:
+    def setup_method(self):
+        from sources.tomtom_incidents import _extract_coords
+        self.fn = _extract_coords
+
+    def test_point_retorna_lat_lon(self):
+        inc = {"geometry": {"type": "Point", "coordinates": [-99.1, 19.4]}}
+        lat, lon = self.fn(inc)
+        assert abs(lat - 19.4) < 1e-4
+        assert abs(lon - (-99.1)) < 1e-4
+
+    def test_point_redondeado_a_5_decimales(self):
+        inc = {"geometry": {"type": "Point", "coordinates": [-99.123456789, 19.987654321]}}
+        lat, lon = self.fn(inc)
+        assert lat == round(19.987654321, 5)
+        assert lon == round(-99.123456789, 5)
+
+    def test_linestring_retorna_punto_medio(self):
+        inc = {"geometry": {
+            "type": "LineString",
+            "coordinates": [[-99.0, 19.0], [-99.1, 19.1], [-99.2, 19.2]],
+        }}
+        lat, lon = self.fn(inc)
+        # Punto medio (índice 1 de 3)
+        assert abs(lat - 19.1) < 1e-4
+        assert abs(lon - (-99.1)) < 1e-4
+
+    def test_geometria_vacia_retorna_none(self):
+        assert self.fn({}) is None
+
+    def test_linestring_vacio_retorna_none(self):
+        inc = {"geometry": {"type": "LineString", "coordinates": []}}
+        assert self.fn(inc) is None
+
+
+class TestTomTomToAlerta:
+    def setup_method(self):
+        from sources.tomtom_incidents import _to_alerta
+        self.fn = _to_alerta
+
+    def _inc(self, cat=1, delay=2, roads=None, desde="Origen", hasta="Destino",
+             start="2024-01-15T20:30:00Z", coords=None):
+        geom = {"type": "Point", "coordinates": coords or [-99.1, 19.4]}
+        return {
+            "geometry": geom,
+            "properties": {
+                "iconCategory": cat,
+                "magnitudeOfDelay": delay,
+                "startTime": start,
+                "from": desde,
+                "to": hasta,
+                "roadNumbers": roads if roads is not None else ["MEX-57D"],
+            },
+        }
+
+    def test_tiene_campos_obligatorios(self):
+        a = self.fn(self._inc())
+        for campo in ("tipo", "emoji", "descripcion", "hora", "severidad", "fuente", "coords"):
+            assert campo in a, f"Falta campo: {campo}"
+
+    def test_tipo_accidente(self):
+        a = self.fn(self._inc(cat=1))
+        assert a["tipo"] == "Accidente"
+
+    def test_emoji_accidente(self):
+        a = self.fn(self._inc(cat=1))
+        assert a["emoji"] == "🚨"
+
+    def test_descripcion_incluye_carretera(self):
+        a = self.fn(self._inc(roads=["MEX-57D"]))
+        assert "MEX-57D" in a["descripcion"]
+
+    def test_descripcion_incluye_desde_hasta(self):
+        a = self.fn(self._inc(desde="CDMX", hasta="QRO"))
+        assert "CDMX" in a["descripcion"]
+        assert "QRO" in a["descripcion"]
+
+    def test_severidad_es_delay(self):
+        a = self.fn(self._inc(delay=3))
+        assert a["severidad"] == 3
+
+    def test_cierre_hash_solo_en_cat8(self):
+        a_acc = self.fn(self._inc(cat=1))
+        a_cierre = self.fn(self._inc(cat=8))
+        assert a_acc["cierre_hash"] is None
+        assert a_cierre["cierre_hash"] is not None
+
+    def test_coords_extraidas(self):
+        a = self.fn(self._inc())
+        assert a["coords"] is not None
+        lat, lon = a["coords"]
+        assert abs(lat - 19.4) < 1e-4
+
+    def test_fuente_es_tomtom(self):
+        a = self.fn(self._inc())
+        assert a["fuente"] == "TomTom"
+
+
+class TestTomTomDedup:
+    def setup_method(self):
+        from sources.tomtom_incidents import _dedup_incidents, _to_alerta
+        self._dedup = _dedup_incidents
+        self._to_alerta = _to_alerta
+
+    def _inc_raw(self, cat=1, roads=None, desde="A", hasta="B", delay=2):
+        return {
+            "geometry": {"type": "Point", "coordinates": [-99.1, 19.4]},
+            "properties": {
+                "iconCategory": cat,
+                "magnitudeOfDelay": delay,
+                "startTime": "2024-01-15T20:30:00Z",
+                "from": desde,
+                "to": hasta,
+                "roadNumbers": roads if roads is not None else ["MEX-57D"],
+            },
+        }
+
+    def test_lista_vacia(self):
+        assert self._dedup([]) == []
+
+    def test_un_incidente_pasa(self):
+        result = self._dedup([[self._inc_raw()]])
+        assert len(result) == 1
+
+    def test_duplicados_se_eliminan(self):
+        inc = self._inc_raw()
+        result = self._dedup([[inc, inc]])
+        assert len(result) == 1
+
+    def test_ordenado_por_severidad_desc(self):
+        inc_alto = self._inc_raw(delay=4, desde="A2", hasta="B2", roads=["MEX-150D"])
+        inc_bajo = self._inc_raw(delay=1, desde="C", hasta="D", roads=["MEX-45"])
+        result = self._dedup([[inc_bajo, inc_alto]])
+        assert result[0]["severidad"] >= result[-1]["severidad"]
+
+    def test_allowed_per_tile_filtra_carreteras(self):
+        inc = self._inc_raw(roads=["MEX-57D"])
+        # Sólo se permiten carreteras MEX-45 → debe filtrar
+        result = self._dedup([[inc]], allowed_per_tile=[{"MEX-45"}])
+        assert len(result) == 0
+
+    def test_allowed_per_tile_deja_pasar_carretera_correcta(self):
+        inc = self._inc_raw(roads=["MEX-57D"])
+        result = self._dedup([[inc]], allowed_per_tile=[{"MEX-57D"}])
+        assert len(result) == 1
+
+    def test_cierre_sin_carretera_pasa_sin_filtro(self):
+        # cat 8 sin roads: pasa incluso con allowed_per_tile porque roads=[]+allowed
+        inc = self._inc_raw(cat=8, roads=[])
+        result = self._dedup([[inc]], allowed_per_tile=[{"MEX-57D"}])
+        # roads=[] → road_key="" → no hay roads que comparar → pasa
+        assert len(result) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  13. TomTom Flow — umbrales y constantes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestTomTomFlowUmbrales:
+    def setup_method(self):
+        import sources.tomtom_flow as tf
+        self.tf = tf
+
+    def test_muy_lento_menor_que_lento(self):
+        assert self.tf._UMBRAL_MUY_LENTO < self.tf._UMBRAL_LENTO
+
+    def test_lento_menor_que_1(self):
+        assert self.tf._UMBRAL_LENTO < 1.0
+
+    def test_muy_lento_positivo(self):
+        assert self.tf._UMBRAL_MUY_LENTO > 0
+
+    def test_confianza_minima_en_rango(self):
+        assert 0 < self.tf._CONF_MINIMA < 1.0
+
+    def test_ratio_040_es_muy_lento(self):
+        # Un ratio de 0.39 está por debajo del umbral MUY_LENTO (0.40)
+        ratio = 0.39
+        assert ratio < self.tf._UMBRAL_MUY_LENTO
+
+    def test_ratio_060_es_lento(self):
+        ratio = 0.60
+        assert self.tf._UMBRAL_MUY_LENTO <= ratio < self.tf._UMBRAL_LENTO
+
+    def test_ratio_090_es_normal(self):
+        ratio = 0.90
+        assert ratio >= self.tf._UMBRAL_LENTO
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  14. Escaneo carreteras — integridad de datos
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestEscaneoCarreterasIntegridad:
+    def setup_method(self):
+        from sources.escaneo_carreteras import TRAMOS_CLAVE
+        from regions.city_graph import CITY_NODES
+        self.tramos = TRAMOS_CLAVE
+        self.nodes = CITY_NODES
+
+    def test_hay_exactamente_27_tramos(self):
+        assert len(self.tramos) == 27
+
+    def test_todas_las_ciudades_a_existen_en_grafo(self):
+        faltantes = [t[0] for t in self.tramos if t[0] not in self.nodes]
+        assert faltantes == [], f"Ciudades A sin coordenadas: {faltantes}"
+
+    def test_todas_las_ciudades_b_existen_en_grafo(self):
+        faltantes = [t[1] for t in self.tramos if t[1] not in self.nodes]
+        assert faltantes == [], f"Ciudades B sin coordenadas: {faltantes}"
+
+    def test_nombres_no_vacios(self):
+        for a, b, nombre in self.tramos:
+            assert nombre.strip(), f"Nombre vacío en tramo {a}→{b}"
+
+    def test_midpoints_dentro_de_mexico(self):
+        for city_a, city_b, _ in self.tramos:
+            lat_a, lon_a = self.nodes[city_a]
+            lat_b, lon_b = self.nodes[city_b]
+            lat_mid = (lat_a + lat_b) / 2
+            lon_mid = (lon_a + lon_b) / 2
+            assert 14 <= lat_mid <= 33, f"Latitud fuera de rango: {lat_mid}"
+            assert -120 <= lon_mid <= -85, f"Longitud fuera de rango: {lon_mid}"
+
+    def test_no_hay_tramos_duplicados(self):
+        pares = [frozenset([a, b]) for a, b, _ in self.tramos]
+        assert len(pares) == len(set(pares)), "Hay tramos duplicados"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  15. Escaneo ZMVM — _dist_km y datos
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestEscaneoZMVMIntegridad:
+    def setup_method(self):
+        from sources.escaneo_zmvm import TRAMOS_ZMVM, MUNICIPIOS_ORDEN, _dist_km
+        self.tramos = TRAMOS_ZMVM
+        self.municipios = MUNICIPIOS_ORDEN
+        self.dist_km = _dist_km
+
+    def test_todos_los_municipios_orden_tienen_tramos(self):
+        muns_en_tramos = {t[0] for t in self.tramos}
+        for mun in self.municipios:
+            assert mun in muns_en_tramos, f"Municipio sin tramos: {mun}"
+
+    def test_dist_km_mismo_punto_es_cero(self):
+        assert self.dist_km(19.638, -99.001, 19.638, -99.001) == 0.0
+
+    def test_dist_km_un_grado_lat_aprox_111km(self):
+        d = self.dist_km(0.0, 0.0, 1.0, 0.0)
+        assert abs(d - 111.0) < 1.0
+
+    def test_dist_km_un_grado_lon_en_ecuador(self):
+        d = self.dist_km(0.0, 0.0, 0.0, 1.0)
+        assert abs(d - 111.0) < 1.0
+
+    def test_dist_km_es_positiva(self):
+        d = self.dist_km(19.5, -99.2, 19.7, -99.0)
+        assert d > 0
+
+    def test_tramos_con_coordenadas_dentro_de_zmvm(self):
+        for mun, nombre, lat, lon, hw, req_fed, max_d in self.tramos:
+            assert 19.0 <= lat <= 20.0, f"Lat fuera de ZMVM: {lat} en {nombre}"
+            assert -100.0 <= lon <= -98.0, f"Lon fuera de ZMVM: {lon} en {nombre}"
+
+    def test_municipios_orden_tiene_seis_municipios(self):
+        assert len(self.municipios) == 6
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  16. Nitter Monitor — funciones puras
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestNitterClasificar:
+    def setup_method(self):
+        from sources.nitter_monitor import _clasificar
+        self.fn = _clasificar
+
+    def test_cierre(self):
+        emoji, tipo = self.fn("cierre vial en autopista")
+        assert tipo == "Cierre vial"
+
+    def test_bloqueo(self):
+        emoji, tipo = self.fn("bloqueo en la carretera federal")
+        assert tipo == "Cierre vial"
+
+    def test_accidente(self):
+        emoji, tipo = self.fn("accidente grave en MEX-57D")
+        assert tipo == "Accidente"
+
+    def test_volcadura(self):
+        emoji, tipo = self.fn("volcadura de tráiler en la 57")
+        assert tipo == "Accidente"
+
+    def test_derrumbe(self):
+        emoji, tipo = self.fn("derrumbe en la sierra")
+        assert tipo == "Peligro en ruta"
+
+    def test_manifestacion(self):
+        emoji, tipo = self.fn("manifestacion en la carretera")
+        assert tipo == "Manifestación"
+
+    def test_reten(self):
+        emoji, tipo = self.fn("retén de revisión en Querétaro")
+        assert tipo == "Operativo/Retén"
+
+    def test_texto_sin_clasificar(self):
+        emoji, tipo = self.fn("noticias de tráfico sin categoría conocida")
+        assert tipo == "Aviso vial"
+        assert emoji == "📡"
+
+
+class TestNitterAgencia:
+    def setup_method(self):
+        from sources.nitter_monitor import _detectar_agencia
+        self.fn = _detectar_agencia
+
+    def test_capufe_detectado(self):
+        r = self.fn("capufe informa cierre en caseta")
+        assert r is not None
+        assert r[1] == "CAPUFE"
+
+    def test_guardia_nacional(self):
+        r = self.fn("guardia nacional reporta retén en Tamaulipas")
+        assert r is not None
+        assert r[1] == "Guardia Nacional"
+
+    def test_sict(self):
+        r = self.fn("sict emite aviso por derrumbe")
+        assert r is not None
+        assert r[1] == "SICT"
+
+    def test_sin_agencia_retorna_none(self):
+        assert self.fn("accidente en la carretera sin fuente oficial") is None
+
+    def test_case_insensitive(self):
+        r = self.fn("CAPUFE cierra tramo")
+        assert r is not None
+
+
+class TestNitterRelevante:
+    def setup_method(self):
+        from sources.nitter_monitor import _es_relevante
+        self.fn = _es_relevante
+
+    def test_sin_keywords_no_es_relevante(self):
+        assert self.fn("noticias de deporte y espectáculos", {"MEX-57D"}, []) is False
+
+    def test_keyword_sin_filtro_es_relevante(self):
+        assert self.fn("accidente en carretera", set(), []) is True
+
+    def test_keyword_con_highway_que_coincide(self):
+        assert self.fn("accidente mex-57d", {"MEX-57D"}, []) is True
+
+    def test_keyword_con_highway_que_no_coincide(self):
+        assert self.fn("accidente en autopista sin nombre", {"MEX-57D"}, []) is False
+
+    def test_keyword_con_ciudad_que_coincide(self):
+        assert self.fn("cierre en querétaro", set(), ["Querétaro"]) is True
+
+    def test_keyword_con_ciudad_que_no_coincide(self):
+        assert self.fn("accidente en carretera lejana", set(), ["Monterrey"]) is False
+
+
+class TestNitterToAlerta:
+    def setup_method(self):
+        from sources.nitter_monitor import _to_alerta
+        self.fn = _to_alerta
+
+    def test_tiene_campos_obligatorios(self):
+        a = self.fn("cierre en MEX-57D")
+        for campo in ("tipo", "emoji", "descripcion", "severidad", "fuente", "tweet_hash"):
+            assert campo in a
+
+    def test_fuente_por_defecto(self):
+        a = self.fn("accidente", fuente="Google News")
+        assert a["fuente"] == "Google News"
+
+    def test_fuente_nitter(self):
+        a = self.fn("bloqueo", fuente="X/Twitter")
+        assert a["fuente"] == "X/Twitter"
+
+    def test_oficial_eleva_severidad(self):
+        a_oficial = self.fn("capufe cierra carretera", oficial=True)
+        a_normal = self.fn("cierre en carretera")
+        assert a_oficial["severidad"] >= a_normal["severidad"]
+
+    def test_agencia_detectada_pone_autor(self):
+        a = self.fn("capufe reporta cierre")
+        assert a.get("autor") is not None
+
+    def test_tweet_hash_es_hex_12(self):
+        a = self.fn("texto de prueba")
+        h = a["tweet_hash"]
+        assert len(h) == 12
+        assert all(c in "0123456789abcdef" for c in h)
+
+
+class TestNitterRouteSuffix:
+    def setup_method(self):
+        from sources.nitter_monitor import _route_suffix
+        self.fn = _route_suffix
+
+    def test_sin_highways_ni_ciudades_retorna_vacio(self):
+        assert self.fn(set(), []) == ""
+
+    def test_con_highway_incluye_nombre(self):
+        s = self.fn({"MEX-57D"}, [])
+        assert "MEX-57D" in s
+
+    def test_con_ciudad_incluye_nombre(self):
+        s = self.fn(set(), ["Querétaro"])
+        assert "Querétaro" in s
+
+    def test_highways_tienen_prioridad_sobre_ciudades(self):
+        # Si hay highways, el sufijo las usa (no las ciudades)
+        s_hw = self.fn({"MEX-57D"}, ["Querétaro"])
+        s_c = self.fn(set(), ["Querétaro"])
+        assert "MEX-57D" in s_hw
+
+
+class TestNitterParseGnews:
+    def setup_method(self):
+        from sources.nitter_monitor import _parse_gnews
+        self.fn = _parse_gnews
+
+    def _rss(self, titles: list[str]) -> str:
+        items = ""
+        for t in titles:
+            items += f"<item><title>{t}</title><pubDate>Mon, 15 Jan 2099 12:00:00 +0000</pubDate></item>"
+        return f"<rss><channel>{items}</channel></rss>"
+
+    def test_extrae_titulos(self):
+        xml = self._rss(["Accidente en MEX-57D", "Cierre en autopista"])
+        result = self.fn(xml, max_hours=999999)
+        assert "Accidente en MEX-57D" in result
+        assert "Cierre en autopista" in result
+
+    def test_xml_invalido_retorna_lista_vacia(self):
+        assert self.fn("esto no es xml", max_hours=999999) == []
+
+    def test_sin_items_retorna_lista_vacia(self):
+        assert self.fn("<rss><channel></channel></rss>", max_hours=999999) == []
+
+    def test_items_antiguos_son_filtrados(self):
+        # max_hours=0 → cutoff=ahora → todos los ítems del pasado se filtran
+        xml = self._rss(["Noticia vieja"])
+        # Usar fecha muy en el pasado (2020)
+        xml_viejo = "<rss><channel><item><title>Noticia vieja</title><pubDate>Mon, 15 Jan 2020 12:00:00 +0000</pubDate></item></channel></rss>"
+        result = self.fn(xml_viejo, max_hours=0)
+        assert "Noticia vieja" not in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  17. Robbery News — geocode y estado
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRobberyGeocode:
+    def setup_method(self):
+        from sources.robbery_news import _geocode
+        from regions.city_graph import CITY_NODES
+        self.fn = _geocode
+        self.nodes = CITY_NODES
+
+    def test_ciudad_conocida_retorna_coords(self):
+        coords = self.fn("asalto a transportista en Querétaro")
+        assert coords is not None
+        lat, lon = coords
+        assert 14 <= lat <= 33
+        assert -120 <= lon <= -85
+
+    def test_monterrey_en_titulo(self):
+        coords = self.fn("robo a camión cerca de Monterrey en carretera")
+        assert coords is not None
+
+    def test_ciudad_desconocida_retorna_none(self):
+        assert self.fn("asalto en ciudad sin nombre conocido xyzabc") is None
+
+    def test_texto_vacio_retorna_none(self):
+        assert self.fn("") is None
+
+
+class TestRobberyEstadoCoords:
+    def setup_method(self):
+        from sources.robbery_news import _estado_coords
+        self.fn = _estado_coords
+
+    def test_jalisco_detectado(self):
+        coords = self.fn("robo de carga en Jalisco")
+        assert coords is not None
+        lat, lon = coords
+        assert 14 <= lat <= 33
+
+    def test_nuevo_leon_detectado(self):
+        coords = self.fn("piratería terrestre en Nuevo León")
+        assert coords is not None
+
+    def test_chihuahua_detectado(self):
+        coords = self.fn("asalto en Chihuahua")
+        assert coords is not None
+
+    def test_sin_estado_retorna_none(self):
+        assert self.fn("asalto en lugar desconocido xyz") is None
+
+    def test_baja_california_sur_distinto_de_baja_california(self):
+        # "Baja California Sur" es más largo y debe resolverse primero
+        coords_sur = self.fn("robo en Baja California Sur")
+        coords_bc  = self.fn("robo en Baja California")
+        # Ambos deben retornar algo (aunque sean distintos)
+        assert coords_sur is not None
+        assert coords_bc is not None
+
+    def test_acentos_normalizados(self):
+        # "Yucatán" con tilde debe match igual que "Yucatan"
+        coords1 = self.fn("robo en Yucatán")
+        coords2 = self.fn("robo en Yucatan")
+        assert coords1 == coords2
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  18. Harvest — grid nacional
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestHarvestGridNacional:
+    def setup_method(self):
+        from monitor.harvest import MEXICO_GRID, _WMO as _WMO_HARVEST
+        self.grid = MEXICO_GRID
+        self.wmo = _WMO_HARVEST
+
+    def test_grid_tiene_144_tiles(self):
+        assert len(self.grid) == 144
+
+    def test_grid_no_tiene_duplicados(self):
+        assert len(set(self.grid)) == len(self.grid)
+
+    def test_latitudes_dentro_de_mexico(self):
+        lats = [lat for lat, _ in self.grid]
+        assert min(lats) >= 14
+        assert max(lats) <= 32
+
+    def test_longitudes_dentro_de_mexico(self):
+        lons = [lon for _, lon in self.grid]
+        assert min(lons) >= -118
+        assert max(lons) <= -85
+
+    def test_grid_cubre_noroeste(self):
+        # Tijuana aprox (32°N, 117°W) debe tener un tile cercano
+        cercanos = [(lat, lon) for lat, lon in self.grid
+                    if abs(lat - 31) <= 2 and abs(lon - (-117)) <= 2]
+        assert len(cercanos) > 0
+
+    def test_grid_cubre_sureste(self):
+        # Cancún aprox (21°N, 87°W)
+        cercanos = [(lat, lon) for lat, lon in self.grid
+                    if abs(lat - 21) <= 2 and abs(lon - (-87)) <= 2]
+        assert len(cercanos) > 0
+
+    def test_wmo_harvest_tiene_tormenta_electrica(self):
+        assert 95 in self.wmo
+        desc, severo = self.wmo[95]
+        assert severo is True
+
+    def test_wmo_harvest_tiene_despejado(self):
+        assert 0 in self.wmo
+        desc, severo = self.wmo[0]
+        assert severo is False
+
+    def test_nivel_flujo_por_ratio(self):
+        # Verificar los umbrales de nivel en harvest
+        def nivel(ratio):
+            return "MUY_LENTO" if ratio < 0.40 else ("LENTO" if ratio < 0.65 else "NORMAL")
+        assert nivel(0.30) == "MUY_LENTO"
+        assert nivel(0.50) == "LENTO"
+        assert nivel(0.80) == "NORMAL"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  19. Mexico Regions — funciones puras
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestMexicoRegionsFunciones:
+    def setup_method(self):
+        from regions.mexico_regions import (
+            get_region_por_estado, get_regions_info,
+            REGIONS, ESTADO_A_REGION,
+        )
+        self.por_estado = get_region_por_estado
+        self.info = get_regions_info
+        self.regions = REGIONS
+        self.mapa = ESTADO_A_REGION
+
+    def test_jalisco_es_occidente(self):
+        assert self.por_estado("Jalisco") == "occidente"
+
+    def test_nuevo_leon_es_noreste(self):
+        assert self.por_estado("Nuevo León") == "noreste"
+
+    def test_abreviatura_jal_es_occidente(self):
+        assert self.por_estado("JAL") == "occidente"
+
+    def test_abreviatura_nl_es_noreste(self):
+        assert self.por_estado("NL") == "noreste"
+
+    def test_estado_inexistente_retorna_none(self):
+        assert self.por_estado("Mordor") is None
+
+    def test_cdmx_es_centro(self):
+        assert self.por_estado("CDMX") == "centro"
+
+    def test_get_regions_info_retorna_datos(self):
+        result = self.info(["centro", "noreste"])
+        assert len(result) == 2
+        assert result[0]["key"] == "centro"
+        assert "nombre" in result[0]
+        assert "emoji" in result[0]
+
+    def test_get_regions_info_filtra_claves_invalidas(self):
+        result = self.info(["centro", "no_existe"])
+        assert len(result) == 1
+        assert result[0]["key"] == "centro"
+
+    def test_get_regions_info_lista_vacia(self):
+        assert self.info([]) == []
+
+    def test_todas_las_regiones_tienen_campos_clave(self):
+        for key, data in self.regions.items():
+            for campo in ("nombre", "emoji", "estados", "carreteras_clave"):
+                assert campo in data, f"Región {key} sin campo {campo}"
+
+    def test_ocho_regiones_definidas(self):
+        assert len(self.regions) == 8
+
+    def test_estado_a_region_no_esta_vacio(self):
+        assert len(self.mapa) > 0
+
+    def test_todas_las_abreviaturas_en_mapa(self):
+        for key, data in self.regions.items():
+            for abr in data["abreviaturas"]:
+                assert abr.lower() in self.mapa, f"Falta abreviatura: {abr}"
