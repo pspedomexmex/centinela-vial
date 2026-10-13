@@ -49,7 +49,7 @@ async def cmd_start(bot: Bot, chat_id: int):
             "• `/viaje ORIGEN - DESTINO` — Iniciar monitoreo\n"
             "  Ej: `/viaje CDMX - Monterrey`\n\n"
             "• `/escaneo` — Panorama vial nacional (27 tramos)\n"
-            "• `/zona` — Carreteras ZMVM Norte (Ecatepec, Coacalco, Tecámac, Tlalnepantla, Tultitlán, Cuautitlán Izcalli)\n"
+            "• `/zona` — Corredor laboral EdoMex→CDMX (Neza, Ecatepec, Coacalco, Tlalnepantla, Tecámac, Tultitlán, Cuautitlán)\n"
             "• `/alertas` — Incidentes en tu ruta ahora\n"
             "• `/ruta` — Desglose de tramos, km y tiempo\n"
             "• `/trafico` — Estado del tráfico\n"

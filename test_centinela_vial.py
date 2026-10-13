@@ -1013,8 +1013,8 @@ class TestEscaneoZMVMIntegridad:
             assert 19.0 <= lat <= 20.0, f"Lat fuera de ZMVM: {lat} en {nombre}"
             assert -100.0 <= lon <= -98.0, f"Lon fuera de ZMVM: {lon} en {nombre}"
 
-    def test_municipios_orden_tiene_seis_municipios(self):
-        assert len(self.municipios) == 6
+    def test_municipios_orden_tiene_siete_municipios(self):
+        assert len(self.municipios) == 7
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

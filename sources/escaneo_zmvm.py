@@ -1,6 +1,7 @@
 """
-Escaneo en tiempo real de carreteras principales de la Zona Metropolitana
-Valle de México — municipios norte: Ecatepec, Coacalco, Tecámac,
+Escaneo en tiempo real de arterias laborales de la Zona Metropolitana
+Valle de México — corredor de commuters EdoMex → CDMX:
+Nezahualcóyotl, Ecatepec, Coacalco, Tecámac,
 Tlalnepantla, Tultitlán y Cuautitlán Izcalli.
 
 Usa TomTom Flow (velocidad actual) + Incidents (accidentes/cierres).
@@ -37,6 +38,8 @@ TRAMOS_ZMVM: list[tuple[str, str, float, float, str, bool, int]] = [
     ("Tlalnepantla",       "MEX-57D — Tlalnepantla",          19.527, -99.213, "MEX-57D",  True,  10),
     ("Tultitlán",          "MEX-57D — Tultitlán",             19.650, -99.162, "MEX-57D",  True,  10),
     ("Cuautitlán Izcalli", "MEX-57D — Cuautitlán Izcalli",    19.658, -99.222, "MEX-57D",  True,  10),
+    # ── Av. de los Maestros (Tlalnepantla → Nonoalco/Tlatelolco) ──────────────────
+    ("Tlalnepantla",       "Av. de los Maestros",             19.497, -99.178, "AVM",      False,  5),
     # ── Circuito Exterior Mexiquense (concesionada, sin num. MEX) ─────────────────
     ("Coacalco",           "Circ. Ext. — Coacalco",           19.640, -99.088, "ARCO",     False,  5),
     ("Tultitlán",          "Circ. Ext. — Tultitlán",          19.656, -99.148, "ARCO",     False,  5),
@@ -44,11 +47,19 @@ TRAMOS_ZMVM: list[tuple[str, str, float, float, str, bool, int]] = [
     ("Ecatepec",           "Vía Morelos",                     19.597, -99.038, "VIA",      False,  5),
     ("Ecatepec",           "Avenida Central",                 19.596, -99.052, "AV",       False,  5),
     ("Ecatepec",           "López Portillo",                  19.593, -98.995, "LP",       False,  5),
+    # ── Nezahualcóyotl → CDMX (corredor oriente) ──────────────────────────────────
+    # Av. Zaragoza es el eje principal de commute Neza → Aeropuerto / Iztapalapa
+    ("Nezahualcóyotl",     "Av. Zaragoza — acceso CDMX",      19.393, -99.042, "ZAR",      False,  5),
+    # Av. Pantitlán conecta el corazón de Neza al metro Pantitlán (estación más concurrida)
+    ("Nezahualcóyotl",     "Av. Pantitlán / Chimalhuacán",    19.382, -99.004, "CHIM",     False,  5),
+    # Bordo de Xochiaca: norte de Neza, conecta con Ecatepec y Circuito Exterior
+    ("Nezahualcóyotl",     "Bordo de Xochiaca — norte Neza",  19.443, -99.012, "BX",       False,  5),
 ]
 
 # Municipios en el orden en que aparecerán en el reporte
+# Neza primero: es el corredor oriente más congestionado en hora pico
 MUNICIPIOS_ORDEN = [
-    "Ecatepec", "Coacalco", "Tecámac",
+    "Nezahualcóyotl", "Ecatepec", "Coacalco", "Tecámac",
     "Tlalnepantla", "Tultitlán", "Cuautitlán Izcalli",
 ]
 
