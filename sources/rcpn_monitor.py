@@ -28,15 +28,17 @@ MAX_DIAS      = 30   # ventana total
 # Query 2 ("Resistencia Civil Pacífica Nacional") devuelve la noticia de Palalia's Tours.
 _GNEWS_QUERIES: list[tuple[str, str]] = [
     # Nombre exacto — la query más confiable y precisa
-    ('"Resistencia Civil Pacífica Nacional"',                                          "Google News"),
+    ('"Resistencia Civil Pacífica Nacional"',                                              "Google News"),
     # Líder del movimiento con contexto civil
-    ('"Arturo Morales" México resistencia OR marcha OR plantón OR convocatoria',       "Google News"),
+    ('"Arturo Morales" México resistencia OR marcha OR plantón OR convocatoria',           "Google News"),
     # Frase exacta + acción ciudadana (captura bloqueos, cierres, marchas RCPN)
-    ('"resistencia civil pacífica" México bloqueo OR marcha OR plantón OR cierre',     "Google News"),
+    ('"resistencia civil pacífica" México bloqueo OR marcha OR plantón OR cierre',         "Google News"),
     # Amplio: cualquier movilización de resistencia civil en México 2026
     ('resistencia civil pacífica México 2026 manifestantes OR ciudadanos OR convocatoria', "Google News"),
     # RCPN acrónimo + acción
-    ('RCPN México resistencia civil OR marcha OR plantón OR Arturo Morales',           "Google News"),
+    ('RCPN México resistencia civil OR marcha OR plantón OR Arturo Morales',               "Google News"),
+    # Represión y violencia contra colectivos de resistencia civil (Lechería-Texcoco, Oaxaca, etc.)
+    ('"resistencia civil" México muertos OR asesinados OR heridos OR represión OR agresión', "Google News"),
 ]
 
 
