@@ -572,61 +572,49 @@ async def cmd_zona(bot: Bot, chat_id: int):
             s = s.replace(prefix, "")
         return s[:80]  # limitar longitud
 
-    # Clasificar municipios por severidad
-    muns_con_problemas = []
-    muns_normales = []
-    for mun in MUNICIPIOS_ORDEN:
-        tramos = por_mun.get(mun, [])
-        if not tramos:
-            continue
-        s = _sev_mun(tramos)
-        if s > 0:
-            muns_con_problemas.append((mun, tramos, s))
-        else:
-            muns_normales.append(mun)
-
-    # Ordenar: mayor severidad primero
-    muns_con_problemas.sort(key=lambda x: -x[2])
+    _EMOJI_NIVEL = {
+        "MUY_LENTO": "🔴",
+        "LENTO":     "🟠",
+        "MODERADO":  "🟡",
+        "NORMAL":    "🟢",
+        "sin_datos": "⚫",
+    }
 
     lines = [
         f"🚦 *Reporte Vial — ZMVM Norte*",
         f"_{fecha_txt}_\n",
     ]
 
-    for mun, tramos, sev_mun in muns_con_problemas:
-        emoji_m = _emoji_mun(sev_mun)
+    for mun in MUNICIPIOS_ORDEN:
+        tramos = por_mun.get(mun, [])
+        if not tramos:
+            continue
+
+        sev = _sev_mun(tramos)
+        emoji_m = _emoji_mun(sev)
         lines.append(f"{emoji_m} *{mun.upper()}*")
 
         for t in tramos:
-            # Solo tramos con congestión o incidentes
-            if t["nivel"] == "NORMAL" and not t["incidentes"]:
-                continue
+            emoji_t = _EMOJI_NIVEL[t["nivel"]]
+            vel_txt = f" · *{t['velocidad']} km/h*" if t["velocidad"] else ""
+            if t["ratio"] is not None and t["nivel"] not in ("NORMAL", "sin_datos"):
+                pct = int((1 - t["ratio"]) * 100)
+                vel_txt += f" _(−{pct}%)_"
 
-            nivel_txt = _NIVEL_TXT.get(t["nivel"], "")
-            tipos_inc = list({_inc_tipo(inc["desc"]) for inc in t["incidentes"]})
-            detalle = nivel_txt
-            if tipos_inc:
-                detalle += (", " if nivel_txt else "") + ", ".join(tipos_inc)
+            lines.append(f"{emoji_t} {t['nombre']}{vel_txt}")
 
-            lines.append(f"• *{t['nombre']}* — {detalle}")
-
-            # Zona de afectación (primera con coordenadas)
             for inc in t["incidentes"]:
+                inc_tipo_txt = _inc_tipo(inc["desc"])
                 zona = _zona_txt(inc.get("direccion"))
                 coords = (inc.get("lat"), inc.get("lon"))
+                detalle = f"  ⚠️ {inc_tipo_txt}"
                 if zona:
-                    lines.append(f"  📍 Zona: {zona}")
+                    detalle += f" — _{zona}_"
+                lines.append(detalle)
                 if coords[0] and coords[1]:
-                    lines.append(f"  🗺 https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}")
-                break  # solo el primer incidente con coords para no repetir
+                    lines.append(f"  📍 https://maps.google.com/?q={coords[0]:.5f},{coords[1]:.5f}")
 
         lines.append("")
-
-    if muns_normales:
-        lines.append(f"✅ Sin afectaciones: {' · '.join(muns_normales)}\n")
-
-    if not muns_con_problemas:
-        lines.append("✅ _Todas las vialidades con circulación normal_\n")
 
     lines.append(f"_📡 TomTom Traffic · Centinela Vial_")
 
