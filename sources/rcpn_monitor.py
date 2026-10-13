@@ -39,19 +39,6 @@ _GNEWS_QUERIES: list[tuple[str, str]] = [
     ('RCPN México resistencia civil OR marcha OR plantón OR Arturo Morales',           "Google News"),
 ]
 
-# ── Filtro de ruido ───────────────────────────────────────────────────────────
-# Palabras que indican nota policiaca/criminal sin relación con el movimiento RCPN
-_PALABRAS_RUIDO = [
-    "balean", "baleado", "balearon", "baleó",
-    "sicario", "sicarios", "ejecutaron", "ejecutado",
-    "narcotráfico", "cártel", "crimen organizado",
-    "ataque armado", "rafagueo", "explosión",
-]
-
-
-def _es_ruido(titulo: str) -> bool:
-    t = titulo.lower()
-    return any(k in t for k in _PALABRAS_RUIDO)
 
 # ── Cuentas X/Twitter vía Nitter ───────────────────────────────────────────────
 NITTER_INSTANCES = [
@@ -241,9 +228,6 @@ async def get_rcpn_noticias() -> list[dict]:
 
     for lote in [*gnews_lotes, nitter_items]:
         for item in lote:
-            # Descartar notas de crimen organizado sin relación con RCPN
-            if _es_ruido(item["title"]):
-                continue
             key = item["title"][:50]
             if key in seen:
                 continue
