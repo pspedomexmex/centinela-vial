@@ -682,6 +682,12 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
 
     fuentes_txt = " · ".join(sorted(fuentes_vistas)[:4])
     lines.append(f"_📡 {fuentes_txt} · {len(noticias)} noticias_")
+    lines.append(
+        "\n⚠️ _Estas noticias hacen alusión a la Resistencia Civil Pacífica Nacional "
+        "y movimientos afines. Su contenido puede estar equivocado, sesgado o "
+        "manipulado por quien las crea, reproduce o comparte. Verifica siempre "
+        "la fuente original antes de difundir._"
+    )
 
     await bot.send_message(
         chat_id=chat_id,
