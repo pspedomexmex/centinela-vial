@@ -224,3 +224,50 @@ def registrar_incidentes_historico(
         on_conflict="hash_contenido,fecha",
         ignore_duplicates=True,
     ).execute()
+
+
+# ── RCPN Noticias ──────────────────────────────────────────────────────────────
+
+def upsert_rcpn_noticias(noticias: list[dict]):
+    """Guarda/actualiza noticias RCPN. Upsert por hash para evitar duplicados."""
+    registros = [{
+        "hash":      n["hash"],
+        "titulo":    n["titulo"],
+        "link":      n.get("link", ""),
+        "fuente":    n.get("fuente", "Google News"),
+        "emoji":     n.get("emoji", "📰"),
+        "tipo":      n.get("tipo", "Noticia"),
+        "fecha_pub": n["dt"].isoformat(),
+        "fecha_str": n.get("fecha", ""),
+    } for n in noticias]
+    if registros:
+        _db().table("rcpn_noticias").upsert(registros, on_conflict="hash").execute()
+
+
+def get_rcpn_noticias_db(max_dias: int = 30) -> list[dict]:
+    """Lee noticias RCPN de Supabase (últimos max_dias días), más reciente primero."""
+    desde = (datetime.now(timezone.utc) - timedelta(days=max_dias)).isoformat()
+    rows = (
+        _db().table("rcpn_noticias")
+        .select("*")
+        .gte("fecha_pub", desde)
+        .order("fecha_pub", desc=True)
+        .limit(30)
+        .execute()
+    )
+    noticias = []
+    for r in (rows.data or []):
+        dt = datetime.fromisoformat(r["fecha_pub"])
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        noticias.append({
+            "titulo": r["titulo"],
+            "link":   r.get("link", ""),
+            "fuente": r.get("fuente", "Google News"),
+            "emoji":  r.get("emoji", "📰"),
+            "tipo":   r.get("tipo", "Noticia"),
+            "fecha":  r.get("fecha_str", ""),
+            "dt":     dt,
+            "hash":   r["hash"],
+        })
+    return noticias

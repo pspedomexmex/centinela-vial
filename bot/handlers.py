@@ -627,12 +627,13 @@ async def cmd_zona(bot: Bot, chat_id: int):
 
 
 async def cmd_rcpn(bot: Bot, chat_id: int):
-    await bot.send_message(chat_id=chat_id, text="🔍 Buscando noticias RCPN (últimos 30 días)...")
+    await bot.send_message(chat_id=chat_id, text="📰 Consultando noticias RCPN...")
 
-    from sources.rcpn_monitor import get_rcpn_noticias, DIAS_RECIENTE, DIAS_SEMANA
+    from db.supabase_client import get_rcpn_noticias_db
+    from sources.rcpn_monitor import DIAS_RECIENTE, DIAS_SEMANA
     from datetime import datetime, timezone, timedelta
 
-    noticias = await get_rcpn_noticias()
+    noticias = get_rcpn_noticias_db()
 
     now     = datetime.now(timezone.utc)
     hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%d %b · %H:%M h")

@@ -157,3 +157,18 @@ CREATE INDEX IF NOT EXISTS idx_robos_año_mes  ON robos_sesnsp(año, mes);
 CREATE INDEX IF NOT EXISTS idx_robos_entidad  ON robos_sesnsp(entidad);
 CREATE INDEX IF NOT EXISTS idx_robos_coords   ON robos_sesnsp(coords_lat, coords_lon)
   WHERE coords_lat IS NOT NULL;
+
+-- ── RCPN Noticias ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS rcpn_noticias (
+    id           BIGSERIAL PRIMARY KEY,
+    hash         VARCHAR(12)  UNIQUE NOT NULL,
+    titulo       TEXT         NOT NULL,
+    link         TEXT,
+    fuente       TEXT,
+    emoji        VARCHAR(10),
+    tipo         TEXT,
+    fecha_pub    TIMESTAMPTZ,
+    fecha_str    VARCHAR(10),
+    harvested_at TIMESTAMPTZ  DEFAULT NOW()
+);
+ALTER TABLE rcpn_noticias DISABLE ROW LEVEL SECURITY;
