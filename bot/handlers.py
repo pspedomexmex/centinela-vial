@@ -662,11 +662,12 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
 
     def _linea(n: dict) -> str:
         titulo = n["titulo"] if len(n["titulo"]) <= 100 else n["titulo"][:97] + "…"
-        # Escapar caracteres que rompen Markdown en título e URL
         titulo_safe = titulo.replace("[", "(").replace("]", ")")
+        fuente_fecha = f"_📰 {n['fuente']} · {n['fecha']}_"
         if n.get("link"):
-            return f"{n['emoji']} [{titulo_safe}]({n['link']})\n   _📰 {n['fuente']} · {n['fecha']}_"
-        return f"{n['emoji']} {titulo_safe}\n   _📰 {n['fuente']} · {n['fecha']}_"
+            # URL como texto plano: funciona en Telegram Y se conserva al copiar a WhatsApp
+            return f"{n['emoji']} *{titulo_safe}*\n   {fuente_fecha}\n   {n['link']}"
+        return f"{n['emoji']} *{titulo_safe}*\n   {fuente_fecha}"
 
     def _bloque(encabezado: str, grupo: list[dict], max_items: int = 5):
         if not grupo:
