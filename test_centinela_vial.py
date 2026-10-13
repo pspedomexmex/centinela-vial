@@ -1556,8 +1556,8 @@ class TestRCPNConstantes:
     def test_max_dias_es_30(self):
         assert self.m.MAX_DIAS == 30
 
-    def test_hay_tres_queries(self):
-        assert len(self.m._GNEWS_QUERIES) == 3
+    def test_hay_dos_queries(self):
+        assert len(self.m._GNEWS_QUERIES) == 2
 
     def test_queries_no_vacias(self):
         for q, _ in self.m._GNEWS_QUERIES:

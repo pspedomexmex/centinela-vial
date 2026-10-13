@@ -632,14 +632,7 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
     from sources.rcpn_monitor import get_rcpn_noticias, DIAS_RECIENTE, DIAS_SEMANA
     from datetime import datetime, timezone, timedelta
 
-    try:
-        noticias = await asyncio.wait_for(get_rcpn_noticias(), timeout=18.0)
-    except asyncio.TimeoutError:
-        await bot.send_message(
-            chat_id=chat_id,
-            text="⏳ Google News tardó demasiado. Intenta de nuevo en un momento.",
-        )
-        return
+    noticias = await get_rcpn_noticias()
 
     now     = datetime.now(timezone.utc)
     hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%d %b · %H:%M h")
@@ -648,19 +641,13 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
         await bot.send_message(
             chat_id=chat_id,
             parse_mode=ParseMode.MARKDOWN,
-            text=(
-                "📰 *RCPN — Sin resultados*\n"
-                "_No se encontraron noticias en los últimos 30 días._\n\n"
-                "_Fuentes: Google News · Twitter/X_"
-            ),
+            text="📰 *RCPN — Sin resultados*\n_No se encontraron noticias en los últimos 30 días._",
         )
         return
 
     recientes  = [n for n in noticias if (now - n["dt"]).days <  DIAS_RECIENTE]
     esta_sem   = [n for n in noticias if DIAS_RECIENTE <= (now - n["dt"]).days < DIAS_SEMANA]
     mas_viejas = [n for n in noticias if (now - n["dt"]).days >= DIAS_SEMANA]
-
-    fuentes_vistas: set[str] = {n["fuente"] for n in noticias}
 
     lines = [
         "📰 *Resistencia Civil Pacífica Nacional*",
@@ -672,7 +659,6 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
         titulo_safe = titulo.replace("[", "(").replace("]", ")")
         fuente_fecha = f"_📰 {n['fuente']} · {n['fecha']}_"
         if n.get("link"):
-            # URL como texto plano: funciona en Telegram Y se conserva al copiar a WhatsApp
             return f"{n['emoji']} *{titulo_safe}*\n   {fuente_fecha}\n   {n['link']}"
         return f"{n['emoji']} *{titulo_safe}*\n   {fuente_fecha}"
 
@@ -688,8 +674,7 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
     _bloque("📅 Esta semana", esta_sem)
     _bloque("🗓 Hace 8–30 días", mas_viejas)
 
-    fuentes_txt = " · ".join(sorted(fuentes_vistas)[:4])
-    lines.append(f"_📡 {fuentes_txt} · {len(noticias)} noticias_")
+    lines.append(f"_📡 Google News · {len(noticias)} noticias_")
     lines.append(
         "\n⚠️ _Estas noticias hacen alusión a la Resistencia Civil Pacífica Nacional "
         "y movimientos afines. Su contenido puede estar equivocado, sesgado o "
