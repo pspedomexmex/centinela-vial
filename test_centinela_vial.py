@@ -1455,39 +1455,39 @@ class TestRCPNParseGnews:
 
     def test_extrae_titulo(self):
         xml = self._rss([self._item()])
-        result = self.fn(xml, max_days=99999)
+        result = self.fn(xml)
         assert result[0]["title"] == "RCPN marcha"
 
     def test_extrae_link(self):
         xml = self._rss([self._item(link="https://proceso.com.mx/nota")])
-        result = self.fn(xml, max_days=99999)
+        result = self.fn(xml)
         assert result[0]["link"] == "https://proceso.com.mx/nota"
 
     def test_extrae_fuente(self):
         xml = self._rss([self._item(fuente="Proceso")])
-        result = self.fn(xml, max_days=99999)
+        result = self.fn(xml)
         assert result[0]["fuente"] == "Proceso"
 
     def test_item_sin_fuente_usa_default(self):
         xml = self._rss([("Noticia", "Mon, 15 Jan 2099 12:00:00 +0000", "http://x.com", "")])
-        result = self.fn(xml, fuente_default="Google News", max_days=99999)
+        result = self.fn(xml, fuente_default="Google News")
         assert result[0]["fuente"] == "Google News"
 
-    def test_filtra_noticias_antiguas(self):
-        xml = self._rss([self._item(pub="Mon, 01 Jan 2020 12:00:00 +0000")])
-        assert self.fn(xml, max_days=1) == []
+    def test_items_futuros_pasan_ventana(self):
+        xml = self._rss([self._item(pub="Mon, 15 Jan 2099 12:00:00 +0000")])
+        assert len(self.fn(xml)) == 1
 
     def test_xml_invalido_retorna_vacio(self):
         assert self.fn("esto no es xml") == []
 
     def test_items_tienen_dt(self):
         xml = self._rss([self._item()])
-        result = self.fn(xml, max_days=99999)
+        result = self.fn(xml)
         assert "dt" in result[0]
 
     def test_multiples_items(self):
         xml = self._rss([self._item(title="N1"), self._item(title="N2")])
-        assert len(self.fn(xml, max_days=99999)) == 2
+        assert len(self.fn(xml)) == 2
 
 
 class TestRCPNExcluir:
@@ -1566,5 +1566,6 @@ class TestRCPNConstantes:
     def test_clasificacion_tiene_entradas(self):
         assert len(self.m._CLASIFICACION) >= 4
 
-    def test_rcpn_accounts_es_lista(self):
-        assert isinstance(self.m.RCPN_ACCOUNTS, list)
+    def test_hay_queries_no_vacias(self):
+        for q, _ in self.m._GNEWS_QUERIES:
+            assert q.strip()
