@@ -26,19 +26,14 @@ MAX_DIAS      = 30   # ventana total
 # ── Queries Google News ────────────────────────────────────────────────────────
 # Estrategia: primero queries exactas (alta precisión), luego amplias (más cobertura).
 # Query 2 ("Resistencia Civil Pacífica Nacional") devuelve la noticia de Palalia's Tours.
+# 3 queries: suficiente cobertura sin saturar Google News desde Vercel
 _GNEWS_QUERIES: list[tuple[str, str]] = [
-    # Nombre exacto — la query más confiable y precisa
+    # Nombre exacto de la organización — la más precisa (~10 resultados)
     ('"Resistencia Civil Pacífica Nacional"',                                              "Google News"),
-    # Líder del movimiento con contexto civil
-    ('"Arturo Morales" México resistencia OR marcha OR plantón OR convocatoria',           "Google News"),
-    # Frase exacta + acción ciudadana (captura bloqueos, cierres, marchas RCPN)
+    # Acciones civiles: marchas, bloqueos, cierres (~10 resultados)
     ('"resistencia civil pacífica" México bloqueo OR marcha OR plantón OR cierre',         "Google News"),
-    # Amplio: cualquier movilización de resistencia civil en México 2026
-    ('resistencia civil pacífica México 2026 manifestantes OR ciudadanos OR convocatoria', "Google News"),
-    # RCPN acrónimo + acción
-    ('RCPN México resistencia civil OR marcha OR plantón OR Arturo Morales',               "Google News"),
-    # Represión y violencia contra colectivos de resistencia civil (Lechería-Texcoco, Oaxaca, etc.)
-    ('"resistencia civil" México muertos OR asesinados OR heridos OR represión OR agresión', "Google News"),
+    # Represión y violencia contra colectivos civiles — Lechería-Texcoco, Oaxaca, etc.
+    ('"resistencia civil" México muertos OR heridos OR represión OR agresión OR detenidos', "Google News"),
 ]
 
 
@@ -194,13 +189,16 @@ def _parse_nitter(xml_text: str, cuenta: str, fuente_label: str,
 
 # ── Fetchers async ─────────────────────────────────────────────────────────────
 
+_TIMEOUT = httpx.Timeout(connect=4.0, read=6.0, write=3.0, pool=3.0)
+
+
 async def _fetch_gnews(client: httpx.AsyncClient,
                        query: str, fuente_label: str) -> list[dict]:
     try:
         r = await client.get(
             GNEWS_URL,
             params={**GNEWS_PARAMS, "q": query},
-            timeout=6,
+            timeout=_TIMEOUT,
             follow_redirects=True,
         )
         r.raise_for_status()

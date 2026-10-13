@@ -632,7 +632,14 @@ async def cmd_rcpn(bot: Bot, chat_id: int):
     from sources.rcpn_monitor import get_rcpn_noticias, DIAS_RECIENTE, DIAS_SEMANA
     from datetime import datetime, timezone, timedelta
 
-    noticias = await get_rcpn_noticias()
+    try:
+        noticias = await asyncio.wait_for(get_rcpn_noticias(), timeout=18.0)
+    except asyncio.TimeoutError:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="⏳ Google News tardó demasiado. Intenta de nuevo en un momento.",
+        )
+        return
 
     now     = datetime.now(timezone.utc)
     hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%d %b · %H:%M h")
