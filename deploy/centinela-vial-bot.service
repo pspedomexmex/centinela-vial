@@ -1,0 +1,27 @@
+[Unit]
+Description=Centinela Vial - Bot de comandos (long-polling 24/7)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# --- AJUSTA ESTAS 4 RUTAS A TU VM ---
+# Usuario del sistema (en Oracle Ubuntu suele ser "ubuntu"):
+User=ubuntu
+# Carpeta donde clonaste el repo:
+WorkingDirectory=/home/ubuntu/centinela-vial
+# Archivo con las variables (TOKEN, keys). NO se versiona. chmod 600.
+EnvironmentFile=/home/ubuntu/centinela-vial/.env
+# Python del entorno virtual del repo:
+ExecStart=/home/ubuntu/centinela-vial/.venv/bin/python bot/run_polling.py
+
+# Reinicio automatico si el proceso cae:
+Restart=always
+RestartSec=5
+# Evita bucles de reinicio si algo esta mal de raiz:
+StartLimitIntervalSec=120
+StartLimitBurst=6
+
+[Install]
+WantedBy=multi-user.target
