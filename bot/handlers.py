@@ -30,10 +30,9 @@ from sources.capufe_monitor import get_capufe_alerts_for_regions
 from sources.escaneo_carreteras import escaneo_nacional
 from sources.escaneo_zmvm import escaneo_zmvm_norte, MUNICIPIOS_ORDEN
 from sources.gmaps_traffic import get_traffic_status, EMOJI_TRAFICO
-from db.supabase_client import (
+from db.store import (
     guardar_viaje, get_viaje, detener_viaje,
     actualizar_cierres, limpiar_cierres_viaje,
-    registrar_incidentes_historico,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,27 +55,7 @@ async def cmd_start(bot: Bot, chat_id: int):
             "• `/trafico` — Estado del tráfico\n"
             "• `/estado` — Resumen del viaje activo\n"
             "• `/regiones` — Regiones que cubre tu ruta\n"
-            "• `/detener` — Terminar monitoreo\n\n"
-            "📊 `/dashboard` — Ver datos históricos en tiempo real"
-        ),
-    )
-
-
-async def cmd_dashboard(bot: Bot, chat_id: int):
-    await bot.send_message(
-        chat_id=chat_id,
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=False,
-        text=(
-            "📊 *Centinela Vial — Dashboard de Tesis*\n\n"
-            "Visualiza incidentes, flujo vial y clima acumulados:\n\n"
-            "🔗 [centinela\\-vial\\.vercel\\.app/dashboard](https://centinela-vial.vercel.app/dashboard)\n\n"
-            "• Incidentes por tipo y carretera\n"
-            "• Flujo vial por ciudad\n"
-            "• Distribución por hora y día\n"
-            "• Mapa de incidentes con coordenadas\n"
-            "• Tabla de últimos registros\n\n"
-            "_Datos actualizados 3 veces al día — 06:00, 14:00, 22:00 MX_"
+            "• `/detener` — Terminar monitoreo"
         ),
     )
 
@@ -201,13 +180,8 @@ async def cmd_alertas(bot: Bot, chat_id: int):
         tweet_task,
     )
 
-    # Guardar histórico para dataset de tesis
-    registrar_incidentes_historico(
-        tomtom_inc + flow_inc + weather_inc,
-        origen=viaje.get("origen", ""),
-        destino=viaje.get("destino", ""),
-        city_path=city_path,
-    )
+    # (v2) Ya NO se guarda histórico: el dataset de tesis fue eliminado para
+    # operar a costo $0. Las consultas son en vivo, sin acumulación en base.
 
     # Sincronizar cierres y detectar reaperturas
     cierres_actuales = {
@@ -629,11 +603,12 @@ async def cmd_zona(bot: Bot, chat_id: int):
 async def cmd_rcpn(bot: Bot, chat_id: int):
     await bot.send_message(chat_id=chat_id, text="📰 Consultando noticias RCPN...")
 
-    from db.supabase_client import get_rcpn_noticias_db
-    from sources.rcpn_monitor import DIAS_RECIENTE, DIAS_SEMANA
+    # (v2) Consulta EN VIVO a Google News, sin base de datos: se obtiene al
+    # momento en que el usuario lo pide. Conserva la función sin persistir nada.
+    from sources.rcpn_monitor import get_rcpn_noticias, DIAS_RECIENTE, DIAS_SEMANA
     from datetime import datetime, timezone, timedelta
 
-    noticias = get_rcpn_noticias_db()
+    noticias = await get_rcpn_noticias()
 
     now     = datetime.now(timezone.utc)
     hora_mx = datetime.now(timezone(timedelta(hours=-6))).strftime("%d %b · %H:%M h")

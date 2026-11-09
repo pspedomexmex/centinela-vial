@@ -1,0 +1,58 @@
+name: Centinela Vial — Bot (sondeo de comandos)
+
+# Sondea los comandos de Telegram por lotes cada 5 minutos (getUpdates).
+# En repositorio PÚBLICO, los minutos de GitHub Actions son ilimitados y gratis.
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # cada 5 minutos (mínimo permitido por Actions)
+  workflow_dispatch:         # disparo manual desde la pestaña Actions
+
+# Permiso mínimo: solo escribir contenido para commitear el estado (state/).
+permissions:
+  contents: write
+
+# Grupo de concurrencia COMPARTIDO con monitor.yml: evita que ambos workflows
+# escriban y hagan push del estado al mismo tiempo (previene conflictos de git).
+concurrency:
+  group: centinela-estado
+  cancel-in-progress: false
+
+jobs:
+  sondeo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Procesar comandos pendientes
+        env:
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GMAPS_KEY:           ${{ secrets.GMAPS_KEY }}
+          TOMTOM_KEY:          ${{ secrets.TOMTOM_KEY }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+        run: python bot/poll.py
+
+      - name: Commitear estado (si cambió)
+        run: |
+          git config user.name  "centinela-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/
+          if git diff --cached --quiet; then
+            echo "Sin cambios de estado."
+          else
+            git commit -m "estado: sondeo de comandos [skip ci]"
+            # Reintento ante posible carrera con monitor.yml.
+            git push || (git pull --rebase --autostash && git push)
+          fi

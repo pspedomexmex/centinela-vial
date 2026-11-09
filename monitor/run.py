@@ -1,6 +1,7 @@
 """
 Script de monitoreo periódico — ejecutado por GitHub Actions cada 30 min.
-Revisa viajes activos en Supabase y envía alertas si hay incidentes nuevos.
+Revisa los viajes activos (state/viajes.json) y envía alertas a Telegram si hay
+incidentes nuevos. El de-dup se persiste en state/alertas.json. Sin base externa.
 """
 import os
 import sys
@@ -12,9 +13,9 @@ import requests
 # Agregar raíz del proyecto al path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from db.supabase_client import (
+from db.store import (
     get_viajes_activos, ya_enviada, marcar_enviada, limpiar_alertas_viejas,
-    actualizar_cierres, registrar_incidentes_historico,
+    actualizar_cierres,
 )
 from sources.tomtom_incidents import (
     get_incidents_for_city_route as _city_incidents,
@@ -84,14 +85,7 @@ async def check_viaje(viaje: dict):
         inc_task, flow_task, weather_task, tweet_task,
     )
 
-    # ── Guardar histórico para dataset de tesis ────────────────────
-    todos_historico = tomtom_inc + flow_inc + weather_inc
-    registrar_incidentes_historico(
-        todos_historico,
-        origen=viaje.get("origen", ""),
-        destino=viaje.get("destino", ""),
-        city_path=city_path,
-    )
+    # (v2) Sin guardado de histórico: operación a costo $0, solo alertas en vivo.
 
     # ── Detección de reaperturas ───────────────────────────────────
     cierres_actuales = {

@@ -1,0 +1,43 @@
+# ── Centinela Vial — .gitignore ──────────────────────────────────────────────
+# Objetivo de seguridad: que NUNCA lleguen secretos ni basura al repositorio.
+
+# Secretos y variables de entorno (jamás se commitean; usar GitHub Secrets)
+.env
+.env.*
+!.env.example          # la plantilla SÍ se versiona (sin valores reales)
+
+# Entornos virtuales de Python
+.venv/
+venv/
+env/
+ENV/
+
+# Caché y artefactos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Bases de datos locales (remanentes de la arquitectura anterior con SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# NOTA: la carpeta state/ (estado operativo en JSON) SÍ se versiona a propósito:
+# es el mecanismo de persistencia del bot. Pero los archivos auxiliares de
+# bloqueo y temporales NO se versionan (son efímeros de cada ejecución):
+state/*.lock
+state/*.tmp
+state/.tmp_*

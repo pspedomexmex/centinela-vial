@@ -1,0 +1,3 @@
+Este directorio contiene el estado operativo del bot en archivos JSON
+(viajes.json, alertas.json, cierres.json, offset.json), que los workflows
+de GitHub Actions leen, escriben y commitean. Se versiona a propósito.

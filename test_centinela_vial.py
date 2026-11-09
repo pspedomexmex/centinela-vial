@@ -545,49 +545,6 @@ class TestCalcularRuta:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  11. trip_monitor — funciones auxiliares puras
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class TestTripMonitorUtils:
-    def setup_method(self):
-        # Importar dentro del test para no romper stubs al inicio
-        from scheduler.trip_monitor import _hash_incidente, _formato_incidente
-        self._hash = _hash_incidente
-        self._fmt  = _formato_incidente
-
-    def test_hash_determinista(self):
-        inc = {"tipo": "Accidente", "descripcion": "Choque en MEX-57D km 120"}
-        assert self._hash(inc) == self._hash(inc)
-
-    def test_hash_distinto_para_incidentes_distintos(self):
-        a = {"tipo": "Accidente", "descripcion": "Choque en MEX-57D km 120"}
-        b = {"tipo": "Cierre", "descripcion": "Carretera cerrada MEX-85"}
-        assert self._hash(a) != self._hash(b)
-
-    def test_hash_es_hex_32_chars(self):
-        inc = {"tipo": "Obras", "descripcion": "Reparación de puente"}
-        h = self._hash(inc)
-        assert len(h) == 32
-        assert all(c in "0123456789abcdef" for c in h)
-
-    def test_formato_incluye_tipo_y_descripcion(self):
-        inc = {"emoji": "🚨", "tipo": "Accidente", "descripcion": "Choque km 45"}
-        texto = self._fmt(inc)
-        assert "Accidente" in texto
-        assert "Choque km 45" in texto
-
-    def test_formato_incluye_autor_si_hay(self):
-        inc = {"emoji": "📰", "tipo": "Noticia", "descripcion": "Bloqueo", "autor": "@fuente"}
-        texto = self._fmt(inc)
-        assert "@fuente" in texto
-
-    def test_formato_sin_autor_no_genera_error(self):
-        inc = {"emoji": "⚠️", "tipo": "Obras", "descripcion": "Bacheo en curva"}
-        texto = self._fmt(inc)
-        assert "Obras" in texto
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 #  12. openmeteo — integridad del dict WMO
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1265,63 +1222,6 @@ class TestRobberyEstadoCoords:
         coords1 = self.fn("robo en Yucatán")
         coords2 = self.fn("robo en Yucatan")
         assert coords1 == coords2
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  18. Harvest — grid nacional
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class TestHarvestGridNacional:
-    def setup_method(self):
-        from monitor.harvest import MEXICO_GRID, _WMO as _WMO_HARVEST
-        self.grid = MEXICO_GRID
-        self.wmo = _WMO_HARVEST
-
-    def test_grid_tiene_144_tiles(self):
-        assert len(self.grid) == 144
-
-    def test_grid_no_tiene_duplicados(self):
-        assert len(set(self.grid)) == len(self.grid)
-
-    def test_latitudes_dentro_de_mexico(self):
-        lats = [lat for lat, _ in self.grid]
-        assert min(lats) >= 14
-        assert max(lats) <= 32
-
-    def test_longitudes_dentro_de_mexico(self):
-        lons = [lon for _, lon in self.grid]
-        assert min(lons) >= -118
-        assert max(lons) <= -85
-
-    def test_grid_cubre_noroeste(self):
-        # Tijuana aprox (32°N, 117°W) debe tener un tile cercano
-        cercanos = [(lat, lon) for lat, lon in self.grid
-                    if abs(lat - 31) <= 2 and abs(lon - (-117)) <= 2]
-        assert len(cercanos) > 0
-
-    def test_grid_cubre_sureste(self):
-        # Cancún aprox (21°N, 87°W)
-        cercanos = [(lat, lon) for lat, lon in self.grid
-                    if abs(lat - 21) <= 2 and abs(lon - (-87)) <= 2]
-        assert len(cercanos) > 0
-
-    def test_wmo_harvest_tiene_tormenta_electrica(self):
-        assert 95 in self.wmo
-        desc, severo = self.wmo[95]
-        assert severo is True
-
-    def test_wmo_harvest_tiene_despejado(self):
-        assert 0 in self.wmo
-        desc, severo = self.wmo[0]
-        assert severo is False
-
-    def test_nivel_flujo_por_ratio(self):
-        # Verificar los umbrales de nivel en harvest
-        def nivel(ratio):
-            return "MUY_LENTO" if ratio < 0.40 else ("LENTO" if ratio < 0.65 else "NORMAL")
-        assert nivel(0.30) == "MUY_LENTO"
-        assert nivel(0.50) == "LENTO"
-        assert nivel(0.80) == "NORMAL"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

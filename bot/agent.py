@@ -7,7 +7,7 @@ import json
 import asyncio
 from groq import AsyncGroq
 
-from db.supabase_client import get_viaje
+from db.store import get_viaje
 from regions.route_parser import calcular_ruta_y_regiones
 from sources.tomtom_incidents import (
     get_incidents_for_city_route,
