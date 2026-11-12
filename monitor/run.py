@@ -133,7 +133,12 @@ async def check_viaje(viaje: dict):
     logger.info(f"Alertas enviadas a chat {chat_id}: {len(nuevos)} nuevas")
 
 
-async def main():
+async def run_monitor() -> dict:
+    """
+    Ejecuta un ciclo de monitoreo: revisa todos los viajes activos y envía
+    alertas nuevas. Devuelve un pequeño resumen (para el endpoint de Vercel).
+    Reutilizable tanto por el CLI (monitor/run.py) como por api/monitor.py.
+    """
     logger.info("Centinela Vial Monitor iniciando...")
     limpiar_alertas_viejas(horas=6)
 
@@ -141,11 +146,17 @@ async def main():
     logger.info(f"Viajes activos: {len(viajes)}")
 
     if not viajes:
-        return
+        return {"viajes_activos": 0, "ok": True}
 
     await asyncio.gather(*[check_viaje(v) for v in viajes])
     logger.info("Monitor completado.")
+    return {"viajes_activos": len(viajes), "ok": True}
+
+
+# Alias de compatibilidad para el CLI antiguo.
+async def main():
+    return await run_monitor()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_monitor())

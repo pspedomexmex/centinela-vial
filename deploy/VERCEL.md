@@ -62,8 +62,57 @@ Si algo falla, revisa **Vercel → tu proyecto → Logs**.
 
 ---
 
-## (Opcional) Memoria de viajes activos
+## 5. Memoria de viajes + alertas automáticas (Upstash Redis + cron-job.org)
 
-Si quieres que `/viaje` recuerde tu ruta y el monitor te mande alertas:
-conecta **Upstash Redis** (free tier, sin tarjeta) y reemplaza la escritura de
-`state/*.json` por lectura/escritura en Redis. Pídelo y se integra.
+Esto hace que `/viaje` **recuerde** tu ruta y que el monitor te mande alertas
+cada 30 min. Todo gratis, sin tarjeta.
+
+### 5.1 Crear la base Redis (Upstash)
+
+1. Entra a **https://console.upstash.com** y regístrate (sin tarjeta).
+2. **Redis → Create database** (elige una región cercana, p. ej. `us-east-1`).
+3. En la base creada, abre la pestaña **REST API** y copia:
+   - **UPSTASH_REDIS_REST_URL**
+   - **UPSTASH_REDIS_REST_TOKEN**
+
+> Free tier: 500K comandos/mes y 250 MB — de sobra para los viajes del bot.
+
+### 5.2 Añadir las variables en Vercel
+
+Vercel → tu proyecto → **Settings → Environment Variables** (marca *Production*):
+
+| Nombre | Valor |
+|---|---|
+| `UPSTASH_REDIS_REST_URL` | el que copiaste de Upstash |
+| `UPSTASH_REDIS_REST_TOKEN` | el que copiaste de Upstash |
+| `MONITOR_SECRET` | una cadena aleatoria (`openssl rand -hex 16`) |
+
+Vuelve a desplegar (**Deployments → Redeploy**) para que tomen efecto. Desde
+ahora `/viaje`, `/estado` y `/detener` **sí** recuerdan tu ruta (ya no es /tmp
+efímero): el estado vive en Redis.
+
+### 5.3 Programar las alertas cada 30 min (cron-job.org)
+
+El plan gratis de Vercel solo permite cron **1 vez al día**, así que usamos un
+programador externo gratuito:
+
+1. Entra a **https://cron-job.org** y regístrate (gratis).
+2. **Create cronjob**:
+   - **URL:** `https://<tu-proyecto>.vercel.app/api/monitor?secret=<MONITOR_SECRET>`
+     (el mismo `MONITOR_SECRET` que pusiste en Vercel)
+   - **Schedule:** cada **30 minutos** (o lo que prefieras; cron-job.org permite
+     hasta cada minuto).
+3. Guarda. A partir de ahí, cada 30 min cron-job.org llama a tu endpoint, que
+   lee los viajes activos de Redis y manda las alertas nuevas a Telegram.
+
+> **Seguridad:** el endpoint `api/monitor.py` rechaza con **401** cualquier
+> petición sin el `MONITOR_SECRET` correcto. Así nadie más puede dispararlo ni
+> agotar tu cuota de TomTom. Puedes probarlo abriendo la URL sin el secreto
+> (debe responder "no autorizado") y luego con el secreto (debe ejecutar).
+
+### 5.4 Comprobar
+
+- Manda `/viaje CDMX - Monterrey` al bot → debe confirmar el viaje.
+- Manda `/estado` → debe seguir recordando tu viaje (prueba de que Redis funciona).
+- Espera un ciclo (o abre la URL del monitor con el secreto) → si hay incidentes
+  nuevos en tu ruta, llegan a Telegram.

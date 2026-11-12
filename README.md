@@ -4,9 +4,11 @@
 Registra una ruta y recibe alertas automáticas de incidentes, cierres, flujo vial,
 clima severo y noticias de seguridad a lo largo del trayecto.
 
-> **Arquitectura v2 — costo de operación: $0.** Sin servidor, sin base de datos de
-> pago. Todo corre en **GitHub Actions** (gratis en repositorios públicos) y el
-> estado se guarda en **archivos JSON versionados** dentro del propio repositorio.
+> **Arquitectura v3 — costo de operación: $0.** El bot responde al instante por
+> **webhook serverless en Vercel** (plan Hobby gratis); el estado compartido vive
+> en **Upstash Redis** (free tier, sin tarjeta) y las alertas automáticas se
+> disparan cada 30 min con un **cron externo gratuito** (cron-job.org). Sin
+> servidor 24/7, sin base de datos de pago.
 
 ---
 
@@ -42,55 +44,63 @@ clima severo y noticias de seguridad a lo largo del trayecto.
 ## 🏗 Arquitectura
 
 ```
-                    ┌─────────────── GitHub (repositorio público) ────────────────┐
-                    │                                                              │
-  Telegram ◄────────┤  Workflow bot.yml       (cron cada 5 min)                    │
-     ▲              │    └─ bot/poll.py  → getUpdates → bot/dispatch.py            │
-     │  comandos    │                     → handlers → responde                    │
-     │              │                     → actualiza state/*.json                 │
-     │              │                                                              │
-     └──── alertas ─┤  Workflow monitor.yml   (cron cada 30 min)                   │
-          push      │    └─ monitor/run.py → lee viajes → consulta fuentes         │
-                    │                      → alerta → de-dup en state/*.json        │
-                    │                                                              │
-                    │  Estado versionado:                                          │
-                    │    state/viajes.json · state/alertas.json ·                  │
-                    │    state/cierres.json · state/offset.json                    │
-                    │    (los workflows commitean sólo si hubo cambios)            │
-                    └──────────────────────────────────────────────────────────────┘
+                         ┌──────────── Vercel (serverless, gratis) ───────────┐
+   comandos              │                                                    │
+  Telegram ──POST──────► │  api/webhook.py → bot/dispatch.py → handlers        │
+     ▲                   │                 → responde al instante              │
+     │                   │                 → lee/escribe viajes en Redis       │
+     │                   │                                                    │
+     │  alertas          │  api/monitor.py  (protegido con MONITOR_SECRET)     │
+     └───────────────────┤    └─ lee viajes de Redis → consulta fuentes        │
+                         │       → alerta → de-dup en Redis                    │
+                         └───────────┬───────────────────────┬────────────────┘
+                                     │                        │
+                      cada 30 min ◄──┘                        ▼
+                   cron-job.org (gratis)            ┌──────────────────────┐
+                   GET /api/monitor?secret=…        │  Upstash Redis        │
+                                                    │  viajes · dedup ·     │
+                                                    │  cierres (estado      │
+                                                    │  compartido, 500K/mes)│
+                                                    └──────────────────────┘
 
   Fuentes en vivo: TomTom · OpenMeteo · CAPUFE · Nitter · Google News · Google Maps · Groq
 ```
 
-**Por qué sin servidor:** el bot no mantiene un proceso 24/7. Un workflow sondea
-los comandos por lotes (`getUpdates`) cada 5 min y otro revisa las rutas cada 30 min.
-Al no exponer ningún webhook público, **no hay endpoint entrante que atacar**.
+**Por qué webhook:** el bot responde al instante sin mantener un proceso 24/7. El
+webhook valida el header secreto de Telegram, así solo Telegram puede invocarlo.
 
-**Por qué JSON versionado:** el estado operativo (viaje activo, de-dup de alertas,
-cierres) es diminuto. Guardarlo en archivos del repo es gratis, auditable (ves el
-diff de qué se alertó y cuándo) e imposible de "llenar y cobrar" como una base de
-pago. La versión anterior usaba Supabase y dejó de ser gratuita al rebasar los 500 MB
-acumulando un dataset histórico que **ya no forma parte de este proyecto**.
+**Por qué Redis compartido:** el webhook (que atiende comandos) y el monitor (que
+manda alertas) corren en invocaciones serverless distintas y efímeras. Necesitan
+una memoria común donde el viaje que registras con `/viaje` quede guardado para que
+el monitor lo lea después. Upstash Redis cumple eso gratis. El estado es diminuto
+(unos pocos viajes + de-dup con expiración automática), así que **nunca se llena**
+—a diferencia de la v1 con Supabase, que se pasó de los 500 MB acumulando el
+dataset histórico de tesis, ya retirado.
+
+> `db/store.py` tiene **doble backend**: usa Redis si hay credenciales de Upstash,
+> y cae a archivos JSON locales si no (para desarrollo y la batería de tests).
 
 ## 🗂 Estructura
 
 ```
 centinela-vial/
+├─ api/                # funciones serverless de Vercel
+│  ├─ webhook.py       # recibe comandos de Telegram y responde al instante
+│  └─ monitor.py       # ciclo de alertas (lo dispara cron-job.org cada 30 min)
 ├─ bot/
-│  ├─ poll.py          # sondeo de comandos (getUpdates) — entrypoint de bot.yml
 │  ├─ dispatch.py      # enruta cada comando a su handler
 │  ├─ handlers.py      # lógica de los comandos
-│  └─ agent.py         # agente IA (Groq)
+│  ├─ agent.py         # agente IA (Groq)
+│  ├─ poll.py          # (alternativa) sondeo por lotes — no se usa con webhook
+│  └─ run_polling.py   # (alternativa) listener 24/7 para VM — no se usa con webhook
 ├─ monitor/
-│  └─ run.py           # monitoreo de rutas y alertas — entrypoint de monitor.yml
+│  └─ run.py           # run_monitor(): revisa rutas y manda alertas
 ├─ db/
-│  └─ store.py         # persistencia JSON (viajes, de-dup, cierres)
+│  └─ store.py         # persistencia doble backend: Upstash Redis o JSON local
 ├─ regions/            # grafo de ciudades, regiones y parser de rutas
 ├─ sources/            # integraciones con fuentes de datos
-├─ state/              # estado operativo en JSON (versionado)
-├─ .github/workflows/
-│  ├─ bot.yml          # cron cada 5 min
-│  └─ monitor.yml      # cron cada 30 min
+├─ deploy/             # VERCEL.md (webhook + Redis + cron) y opción VM
+├─ vercel.json         # config de las funciones serverless
 ├─ requirements.txt
 ├─ .env.example
 ├─ MANUAL.md           # manual de uso para operadores
@@ -101,8 +111,8 @@ centinela-vial/
 
 - **Python 3.11**
 - `python-telegram-bot`, `httpx`, `requests`, `googlemaps`, `groq`
-- **GitHub Actions** como orquestador (cron) — sin servidor
-- Persistencia en **JSON versionado**
+- **Vercel** (webhook + endpoint de monitoreo serverless) — sin servidor 24/7
+- **Upstash Redis** como estado compartido (free tier) · **cron-job.org** como reloj
 
 ## ⚙️ Instalación local (para desarrollo/pruebas)
 
@@ -130,34 +140,42 @@ python -m pytest -q                # correr la batería de tests
 
 Los nombres (sin valores) están en [`.env.example`](.env.example).
 
-## 🚀 Despliegue en GitHub Actions (gratis)
+## 🚀 Despliegue (gratis, sin tarjeta)
 
-1. **Haz el repositorio público** (Actions es ilimitado y gratis en repos públicos;
-   en privados hay un tope de 2000 min/mes). El código no contiene secretos.
-2. **Carga los secretos** en *Settings → Secrets and variables → Actions →
-   New repository secret*: `TELEGRAM_BOT_TOKEN`, `TOMTOM_KEY` y los opcionales que uses.
-3. **Permite que los workflows escriban** el estado: *Settings → Actions → General →
-   Workflow permissions → **Read and write permissions***.
-4. **Activa los workflows:** se disparan solos por cron, o manualmente desde la
-   pestaña *Actions → Run workflow* (`workflow_dispatch`).
-5. Escribe `/start` a tu bot en Telegram. En el próximo ciclo de sondeo (≤5 min)
-   responderá.
+La guía completa y detallada está en **[`deploy/VERCEL.md`](deploy/VERCEL.md)**. En resumen:
 
-> ⏱ **Latencia esperada:** los comandos responden en ≤5 min (sondeo) y las alertas
-> de ruta llegan cada 30 min. Los crons de GitHub Actions pueden retrasarse algunos
-> minutos en horas de alta demanda; es normal.
+1. **Vercel:** importa el repo y despliega (detecta `api/*.py` solo). En *Settings
+   → Environment Variables* pon `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET`, `TOMTOM_KEY`
+   y los opcionales (`GMAPS_KEY`, `GROQ_API_KEY`, …).
+2. **Webhook de Telegram:** regístralo apuntando a `…/api/webhook` con tu
+   `WEBHOOK_SECRET` (comando `setWebhook` en la guía). El bot ya responde al instante.
+3. **Upstash Redis:** crea una base gratis, copia `UPSTASH_REDIS_REST_URL` y
+   `UPSTASH_REDIS_REST_TOKEN` a las variables de Vercel. Ahora `/viaje` recuerda tu ruta.
+4. **cron-job.org:** crea un cronjob cada 30 min a
+   `…/api/monitor?secret=<MONITOR_SECRET>` (mismo `MONITOR_SECRET` que pusiste en
+   Vercel). Esto dispara las alertas automáticas.
+
+> ⏱ **Latencia esperada:** los comandos responden **al instante** (webhook). Las
+> alertas automáticas de ruta llegan cada 30 min (o la frecuencia que fijes en
+> cron-job.org, hasta cada minuto).
+>
+> 🖥 **¿Prefieres una sola máquina?** `deploy/README.md` explica la alternativa de
+> correr todo en una VM Always-Free (long-polling + cron del sistema), sin Vercel
+> ni Redis externo. Elige una u otra, no ambas (chocan en Telegram).
 
 ## 🔐 Consideraciones de seguridad y uso ético/educativo
 
 **Seguridad**
 - **Ningún secreto en el código.** Todo se lee por `os.getenv()` y en producción
-  vive en **GitHub Secrets**, nunca en los archivos YAML ni en el repositorio.
+  vive en las **Environment Variables de Vercel**, nunca en el repositorio.
 - El historial del proyecto se auditó: sin tokens ni credenciales filtradas.
 - `.env` está en `.gitignore`; sólo se versiona `.env.example` (sin valores).
-- El bot usa **sondeo saliente** (`getUpdates`), no un webhook: **no expone ningún
-  endpoint público**, reduciendo la superficie de ataque.
-- Los workflows corren con **permisos mínimos** (`contents: write`, sólo para
-  commitear el estado).
+- **Webhook autenticado:** `api/webhook.py` valida el header secreto de Telegram
+  (`X-Telegram-Bot-Api-Secret-Token`); rechaza con 401 cualquier POST que no venga
+  de Telegram.
+- **Endpoint de monitoreo protegido:** `api/monitor.py` exige `MONITOR_SECRET`; sin
+  él responde 401, para que nadie más pueda dispararlo y agotar tu cuota de TomTom.
+- El token de Upstash viaja solo en la cabecera `Authorization` sobre HTTPS.
 - Si clonas o reutilizas este proyecto, **rota cualquier token** antes de publicarlo.
 
 **Uso ético/educativo**
