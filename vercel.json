@@ -1,15 +1,36 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "api/webhook.py": {
-      "memory": 512,
-      "maxDuration": 30,
-      "includeFiles": "{bot,sources,regions,db}/**"
+  "builds": [
+    {
+      "src": "api/webhook.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb",
+        "includeFiles": [
+          "bot/**",
+          "sources/**",
+          "regions/**",
+          "db/**"
+        ]
+      }
     },
-    "api/monitor.py": {
-      "memory": 512,
-      "maxDuration": 60,
-      "includeFiles": "{bot,sources,regions,db,monitor}/**"
+    {
+      "src": "api/monitor.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb",
+        "includeFiles": [
+          "bot/**",
+          "sources/**",
+          "regions/**",
+          "db/**",
+          "monitor/**"
+        ]
+      }
     }
-  }
+  ],
+  "routes": [
+    { "src": "/api/webhook", "dest": "/api/webhook.py" },
+    { "src": "/api/monitor", "dest": "/api/monitor.py" }
+  ]
 }

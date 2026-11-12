@@ -4,18 +4,12 @@ Webhook de Telegram para Vercel (serverless) — Centinela Vial.
 Telegram hace POST de cada mensaje a esta funcion y el bot responde al instante.
 No hay proceso encendido ni cron: ideal para el plan gratis de Vercel (sin tarjeta).
 
-Modo "consulta en vivo" (sin base de datos):
-  Los comandos que consultan una API y responden en el momento funcionan tal cual:
-  /trafico, /ruta, /escaneo, /zona, /rcpn, /alertas, /regiones, /ayuda, /start.
-  El estado se escribe en /tmp (unico directorio escribible en Vercel, y EFIMERO),
-  por lo que el seguimiento de viajes activos (/viaje, /estado, /detener) NO
-  persiste entre mensajes. Si mas adelante quieres esa memoria, se conecta un
-  almacen gratuito (p. ej. Upstash Redis). Ver deploy/VERCEL.md.
-
 Seguridad:
   - El token se lee de la variable de entorno TELEGRAM_BOT_TOKEN.
   - Se verifica el header secreto de Telegram (WEBHOOK_SECRET) para rechazar
     cualquier POST que no provenga de Telegram.
+  - El estado compartido (viajes activos, de-dup) vive en Upstash Redis cuando
+    UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN estan definidas.
 """
 import os
 import sys
@@ -23,21 +17,25 @@ import json
 import asyncio
 from http.server import BaseHTTPRequestHandler
 
-# En Vercel solo /tmp es escribible; el estado efimero vive ahi.
-os.environ.setdefault("STATE_DIR", "/tmp/state")
-
-# Permitir importar el paquete bot/ desde la raiz del repo.
+# Permitir importar los paquetes del proyecto desde la raiz del repo.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from telegram import Bot
 from bot.dispatch import dispatch
 
-BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+# Las env vars se leen en tiempo de solicitud (no al importar) para que la
+# funcion arranque aunque aun no esten configuradas en Vercel.
+def _get_token() -> str:
+    t = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not t:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN no configurado en variables de entorno de Vercel")
+    return t
+
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 
 async def _procesar(update: dict) -> None:
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(token=_get_token())
     async with bot:
         await dispatch(bot, update)
 
