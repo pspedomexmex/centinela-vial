@@ -1,0 +1,50 @@
+# ── Centinela Vial — .gitignore ──────────────────────────────────────────────
+# Objetivo de seguridad: que NUNCA lleguen secretos ni basura al repositorio.
+
+# Secretos y variables de entorno (jamás se commitean; usar Vercel env vars)
+.env
+.env.*
+# la plantilla SÍ se versiona (sin valores reales):
+!.env.example
+
+# Entornos virtuales de Python
+.venv/
+venv/
+env/
+ENV/
+
+# Caché y artefactos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Bases de datos locales (remanentes de la arquitectura anterior con SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Claude Code (configuración local del IDE, no del proyecto)
+.claude/
+
+# Prompts de sesión de trabajo (no forman parte del código del proyecto)
+PROMPT_MAESTRO.txt
+
+# Estado operativo en JSON (en producción se usa Upstash Redis; localmente
+# estos archivos se crean al correr el bot pero no se versiona su contenido):
+state/*.json
+state/*.lock
+state/*.tmp
+state/.tmp_*

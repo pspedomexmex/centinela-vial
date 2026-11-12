@@ -1,0 +1,237 @@
+"""
+Escaneo en tiempo real de arterias laborales de la Zona Metropolitana
+Valle de México — corredor de commuters EdoMex → CDMX:
+Nezahualcóyotl, Ecatepec, Coacalco, Tecámac,
+Tlalnepantla, Tultitlán y Cuautitlán Izcalli.
+
+Usa TomTom Flow (velocidad actual) + Incidents (accidentes/cierres).
+Comando: /zona
+"""
+import os
+import asyncio
+import math
+import httpx
+
+TOMTOM_KEY = os.environ.get("TOMTOM_KEY", "")
+FLOW_URL    = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
+_CONF_MIN   = 0.4   # umbral de confianza más bajo que el escaneo nacional (zona urbana)
+_FF_MIN     = 20    # freeflow mínimo — filtra puntos en calle de barrio
+
+# Categorías de incidentes relevantes para carga pesada
+_CATS = {1, 3, 7, 8, 9, 11}  # Accidente, Peligroso, Carril cerrado, Cierre, Obras, Inundación
+
+# (municipio, nombre_display, lat, lon, hw_code, require_federal, max_dist_km)
+# require_federal=True  → solo incidentes con número MEX-XX exacto del tramo
+# require_federal=False → cualquier incidente en el radio (vialidades urbanas sin num. MEX)
+# max_dist_km           → radio máximo; autopistas = 10 km, vialidades urbanas = 5 km
+TRAMOS_ZMVM: list[tuple[str, str, float, float, str, bool, int]] = [
+    # ── MEX-85D (Autopista México–Pachuca, cuota) ──────────────────────────────────
+    ("Ecatepec",           "MEX-85D — Ecatepec",              19.638, -99.001, "MEX-85D",  True,  10),
+    ("Tecámac",            "MEX-85D — Tecámac",               19.700, -98.975, "MEX-85D",  True,  10),
+    # ── MEX-85 libre (Carretera México–Pachuca, libre) ─────────────────────────────
+    ("Ecatepec",           "MEX-85 libre — Ecatepec",         19.610, -99.008, "MEX-85",   True,  10),
+    # ── MEX-132D (Autopista Ecatepec–Pirámides) ────────────────────────────────────
+    ("Ecatepec",           "MEX-132D — Eje Pirámides",        19.597, -98.983, "MEX-132D", True,  10),
+    # ── MEX-132 libre (Lechería–Texcoco) ──────────────────────────────────────────
+    ("Coacalco",           "MEX-132 — Lechería/Texcoco",      19.630, -99.078, "MEX-132",  True,  10),
+    # ── MEX-57D (Autopista México–Querétaro) ───────────────────────────────────────
+    ("Tlalnepantla",       "MEX-57D — Tlalnepantla",          19.527, -99.213, "MEX-57D",  True,  10),
+    ("Tultitlán",          "MEX-57D — Tultitlán",             19.650, -99.162, "MEX-57D",  True,  10),
+    ("Cuautitlán Izcalli", "MEX-57D — Cuautitlán Izcalli",    19.658, -99.222, "MEX-57D",  True,  10),
+    # ── Av. de los Maestros (Tlalnepantla → Nonoalco/Tlatelolco) ──────────────────
+    ("Tlalnepantla",       "Av. de los Maestros",             19.497, -99.178, "AVM",      False,  5),
+    # ── Circuito Exterior Mexiquense (concesionada, sin num. MEX) ─────────────────
+    ("Coacalco",           "Circ. Ext. — Coacalco",           19.640, -99.088, "ARCO",     False,  5),
+    ("Tultitlán",          "Circ. Ext. — Tultitlán",          19.656, -99.148, "ARCO",     False,  5),
+    # ── Vialidades urbanas de Ecatepec ────────────────────────────────────────────
+    ("Ecatepec",           "Vía Morelos",                     19.597, -99.038, "VIA",      False,  5),
+    ("Ecatepec",           "Avenida Central",                 19.596, -99.052, "AV",       False,  5),
+    ("Ecatepec",           "López Portillo",                  19.593, -98.995, "LP",       False,  5),
+    # ── Nezahualcóyotl → CDMX (corredor oriente) ──────────────────────────────────
+    # Av. Zaragoza es el eje principal de commute Neza → Aeropuerto / Iztapalapa
+    ("Nezahualcóyotl",     "Av. Zaragoza — acceso CDMX",      19.393, -99.042, "ZAR",      False,  5),
+    # Av. Pantitlán conecta el corazón de Neza al metro Pantitlán (estación más concurrida)
+    ("Nezahualcóyotl",     "Av. Pantitlán / Chimalhuacán",    19.382, -99.004, "CHIM",     False,  5),
+    # Bordo de Xochiaca: norte de Neza, conecta con Ecatepec y Circuito Exterior
+    ("Nezahualcóyotl",     "Bordo de Xochiaca — norte Neza",  19.443, -99.012, "BX",       False,  5),
+]
+
+# Municipios en el orden en que aparecerán en el reporte
+# Neza primero: es el corredor oriente más congestionado en hora pico
+MUNICIPIOS_ORDEN = [
+    "Nezahualcóyotl", "Ecatepec", "Coacalco", "Tecámac",
+    "Tlalnepantla", "Tultitlán", "Cuautitlán Izcalli",
+]
+
+
+async def _flow_punto(client: httpx.AsyncClient, lat: float, lon: float) -> dict:
+    try:
+        r = await client.get(
+            FLOW_URL,
+            params={"key": TOMTOM_KEY, "point": f"{lat},{lon}", "unit": "KMPH"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json().get("flowSegmentData", {})
+    except Exception:
+        return {}
+
+
+def _dist_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    dlat = (lat2 - lat1) * 111.0
+    dlon = (lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    return math.sqrt(dlat ** 2 + dlon ** 2)
+
+
+async def _incidents_punto(
+    client: httpx.AsyncClient,
+    lat: float,
+    lon: float,
+    hw: str,
+    require_federal: bool,
+    max_dist_km: int,
+    label: str = "",       # nombre legible para la descripción (reemplaza hw en vialidades)
+) -> list[dict]:
+    from sources.tomtom_incidents import _fetch_tile, CATEGORIA, _extract_coords
+    incs = await _fetch_tile(client, lat, lon)
+    resultados = []
+    for inc in incs:
+        p   = inc.get("properties", {})
+        cat = p.get("iconCategory", 0)
+        if cat not in _CATS:
+            continue
+
+        if require_federal:
+            roads = p.get("roadNumbers") or []
+            if hw not in roads:
+                continue
+
+        # Descartar si está fuera del radio del tramo
+        coords_inc = _extract_coords(inc)
+        if coords_inc:
+            inc_lat, inc_lon = coords_inc
+            if _dist_km(lat, lon, inc_lat, inc_lon) > max_dist_km:
+                continue
+        else:
+            inc_lat = inc_lon = None
+
+        emoji, tipo = CATEGORIA.get(cat, ("⚠️", "Incidente"))
+        mag     = p.get("magnitudeOfDelay", 0) or 0
+        mag_txt = {1: "menor", 2: "moderado", 3: "grave", 4: "crítico"}.get(mag, "")
+        desc    = f"{emoji} {tipo} en {label or hw}"
+        if mag_txt:
+            desc += f" ({mag_txt})"
+
+        # Sentido del incidente — recortar antes del paréntesis para no repetir nombre de carretera
+        def _cortar(s: str) -> str:
+            return s.split("(")[0].strip(" ,/")
+
+        desde = _cortar(p.get("from") or "")
+        hasta = _cortar(p.get("to")   or "")
+        # Ocultar dirección si from == to (TomTom usa el nombre de la carretera en ambos campos)
+        if desde and hasta and desde.lower() != hasta.lower():
+            direccion = f"↗ {desde} → {hasta}"
+        elif desde and not hasta:
+            direccion = f"↗ desde {desde}"
+        elif hasta and not desde:
+            direccion = f"↗ hacia {hasta}"
+        else:
+            direccion = None
+
+        resultados.append({
+            "desc":      desc,
+            "direccion": direccion,
+            "lat":       inc_lat,
+            "lon":       inc_lon,
+        })
+    return resultados[:2]
+
+
+async def escaneo_zmvm_norte() -> dict[str, list[dict]]:
+    """
+    Escanea todos los tramos de la ZMVM Norte en paralelo.
+    Retorna dict {municipio: [tramo_dict, ...]} ordenado por severidad.
+    """
+    if not TOMTOM_KEY:
+        return {}
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        flow_tasks = [
+            _flow_punto(client, lat, lon)
+            for _, _, lat, lon, _, _, _ in TRAMOS_ZMVM
+        ]
+        inc_tasks = [
+            _incidents_punto(client, lat, lon, hw, req_fed, max_dist,
+                             label=(nombre if not req_fed else ""))
+            for _, nombre, lat, lon, hw, req_fed, max_dist in TRAMOS_ZMVM
+        ]
+        flow_res, inc_res = await asyncio.gather(
+            asyncio.gather(*flow_tasks),
+            asyncio.gather(*inc_tasks),
+        )
+
+    por_mun: dict[str, list[dict]] = {m: [] for m in MUNICIPIOS_ORDEN}
+
+    for (mun, nombre, _, _, hw, _, _), flow, incidentes in zip(TRAMOS_ZMVM, flow_res, inc_res):
+        current  = float(flow.get("currentSpeed",  0) or 0)
+        freeflow = float(flow.get("freeFlowSpeed", 0) or 0)
+        conf     = float(flow.get("confidence",    0) or 0)
+
+        if freeflow >= _FF_MIN and conf >= _CONF_MIN:
+            ratio = current / freeflow
+        else:
+            ratio = None
+
+        if ratio is not None:
+            if ratio < 0.40:
+                nivel, sev = "MUY_LENTO", 3
+            elif ratio < 0.65:
+                nivel, sev = "LENTO", 2
+            elif ratio < 0.85:
+                nivel, sev = "MODERADO", 1
+            else:
+                nivel, sev = "NORMAL", 0
+        elif current > 0:
+            # freeflow demasiado bajo para el umbral — clasificar por velocidad absoluta
+            if current < 15:
+                nivel, sev = "MUY_LENTO", 3
+            elif current < 30:
+                nivel, sev = "LENTO", 2
+            else:
+                nivel, sev = "MODERADO", 1
+        else:
+            nivel, sev = "sin_datos", 0
+
+        # Deduplicar incidentes en la misma ubicación (~100 m: round a 2 decimales ≈ 1.1 km)
+        seen: set[tuple] = set()
+        dedup: list[dict] = []
+        for inc in incidentes:
+            key = (round(inc.get("lat") or 0, 2), round(inc.get("lon") or 0, 2))
+            if key not in seen:
+                seen.add(key)
+                dedup.append(inc)
+        incidentes = dedup
+
+        # Si el tráfico sigue moviéndose (>15 km/h), "Carretera cerrada" → "Cierre parcial"
+        if current > 15:
+            for inc in incidentes:
+                inc["desc"] = inc["desc"].replace("Carretera cerrada", "Cierre parcial")
+
+        if incidentes and any(hw in inc.get("desc", "") for inc in incidentes):
+            sev = max(sev, 2)
+
+        por_mun[mun].append({
+            "nombre":     nombre,
+            "hw":         hw,
+            "velocidad":  round(current)  if current  else None,
+            "libre":      round(freeflow) if freeflow else None,
+            "ratio":      ratio,
+            "nivel":      nivel,
+            "incidentes": incidentes,
+            "sev":        sev,
+        })
+
+    for mun in por_mun:
+        por_mun[mun].sort(key=lambda x: -x["sev"])
+
+    return por_mun
