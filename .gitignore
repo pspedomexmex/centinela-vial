@@ -48,3 +48,4 @@ state/*.json
 state/*.lock
 state/*.tmp
 state/.tmp_*
+.vercel
